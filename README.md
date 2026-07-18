@@ -15,6 +15,10 @@ Built with **Tauri 2 + React + TypeScript + Tailwind CSS 4** (Rust backend).
 | ✅ scaffolded | Custom modpack builder: instances with Minecraft version + Fabric/NeoForge/Forge/Quilt |
 | ✅ scaffolded | One-click mod install (SHA-1 verified) + enable/disable per mod |
 | ✅ scaffolded | Per-instance settings: RAM allocation, Java path, extra JVM args |
+| ✅ scaffolded | **Dockable sidebar** — drag or toggle it left/right, FLIP-animated, position persisted |
+| ✅ scaffolded | **Performance optimizer** — hardware scan (CPU/RAM/GPU/disk), Light/Balanced/Strong tiers, transparent change log |
+| ✅ scaffolded | **Automatic Java management** — detects the required Java (8/17/21), downloads Temurin JREs isolated into the launcher dir |
+| ✅ scaffolded | **Deep links** (`voidlauncher://…`) + landing page, subtle WebAudio UI sounds, branded NSIS installer config |
 | 🚧 Milestone 3 | Game file download pipeline (client jar, libraries, assets, loader profiles) & launch |
 
 ## Documentation
@@ -22,6 +26,8 @@ Built with **Tauri 2 + React + TypeScript + Tailwind CSS 4** (Rust backend).
 - **[docs/CONCEPT.md](docs/CONCEPT.md)** — full concept: tech-stack decision, architecture, design system, roadmap
 - **[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)** — the Microsoft → Xbox → XSTS → Minecraft token chain, step by step
 - **[docs/MOD_APIS.md](docs/MOD_APIS.md)** — Modrinth & CurseForge API guide (endpoints, filters, gotchas)
+- **[docs/ADVANCED_FEATURES.md](docs/ADVANCED_FEATURES.md)** — dockable sidebar internals, optimizer heuristics, Java auto-management
+- **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** — branded NSIS installer, Windows builds, landing page, deep linking
 
 ## Getting started
 
@@ -51,13 +57,16 @@ void-launcher/
 │   ├── styles/theme.css        #   dark-purple design tokens (Tailwind v4 @theme)
 │   └── types/                  #   shared types, mirror the Rust structs
 ├── src-tauri/                  # Rust backend
+│   ├── installer/              #   NSIS branding (BMPs, icon, sound hooks)
 │   └── src/
 │       ├── auth/               #   Microsoft → Xbox → XSTS → Minecraft chain
 │       ├── modplatform/        #   Modrinth + CurseForge behind one unified model
 │       ├── instance/           #   modpack builder: create/settings/install/toggle
 │       ├── launch/             #   Java args + process spawn (pipeline = Milestone 3)
+│       ├── system/             #   hardware scan, optimizer tiers, Temurin auto-install
 │       ├── state.rs            #   shared HTTP client, data dir, session
 │       └── error.rs            #   one serializable error type for all commands
+├── website/                    # landing page (download + voidlauncher:// links)
 └── docs/                       # concept & integration guides
 ```
 

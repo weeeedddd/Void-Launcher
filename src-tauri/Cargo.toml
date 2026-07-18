@@ -16,6 +16,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 # Opens URLs in the system browser (Microsoft login page, mod pages)
 tauri-plugin-opener = "2"
+# voidlauncher:// deep links (registered by the installer, see tauri.conf.json)
+tauri-plugin-deep-link = "2"
+# Forwards a second launch (e.g. a clicked deep link) into the running app
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 # Serialization — everything crossing the IPC boundary is serde camelCase
 serde = { version = "1", features = ["derive"] }
@@ -32,6 +36,18 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 sha1_smol = "1"
+
+# System diagnostics (CPU/RAM/disks) for the performance optimizer
+sysinfo = "0.33"
+# Java runtime management: SHA-256 verification + archive extraction
+sha2 = "0.10"
+zip = "2"
+tar = "0.4"
+flate2 = "1"
+
+[target.'cfg(windows)'.dependencies]
+# Per-app GPU preference (Settings → Display → Graphics) via the registry
+winreg = "0.52"
 
 [profile.release]
 # Smaller, faster binaries for shipping

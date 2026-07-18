@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Check, Download, ExternalLink, LoaderCircle, Package } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/Button";
+import { playSuccess } from "@/lib/sound";
 import type { ModSummary } from "@/types";
 
 const compact = new Intl.NumberFormat("en", { notation: "compact" });
@@ -14,7 +15,10 @@ interface ModCardProps {
 
 /** One search result: icon, meta, categories and a one-click install button. */
 export function ModCard({ mod, onInstall }: ModCardProps) {
-  const install = useMutation({ mutationFn: onInstall ?? (() => Promise.resolve()) });
+  const install = useMutation({
+    mutationFn: onInstall ?? (() => Promise.resolve()),
+    onSuccess: () => playSuccess(),
+  });
 
   return (
     <article

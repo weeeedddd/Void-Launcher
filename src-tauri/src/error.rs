@@ -37,6 +37,10 @@ pub enum LauncherError {
     /// Features that are scaffolded but not built yet (see docs/CONCEPT.md).
     #[error("{0}")]
     NotImplemented(String),
+
+    /// Unexpected internal failures (background task panics etc.).
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 // Tauri delivers command errors to the frontend as the payload of a rejected

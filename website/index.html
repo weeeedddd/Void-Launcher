@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Launcher — a Minecraft launcher from the void</title>
+  <meta name="description" content="Custom Minecraft launcher: Microsoft login, CurseForge & Modrinth mods, modpack builder, performance optimizer." />
+  <style>
+    /* Same design tokens as the launcher (src/styles/theme.css) */
+    :root {
+      --void-950: #0b0b12; --void-900: #111119; --void-800: #1c1c28;
+      --void-700: #262635; --void-600: #34344a;
+      --accent-300: #c4b5fd; --accent-400: #a78bfa; --accent-500: #8b5cf6;
+      --accent-600: #7c3aed; --glow: rgb(139 92 246 / 0.35);
+      --ink-100: #f2f2f8; --ink-300: #b6b6c8; --ink-500: #767688;
+    }
+    * { margin: 0; box-sizing: border-box; }
+    body {
+      background: radial-gradient(ellipse 80% 50% at 50% -20%, rgb(124 58 237 / 0.15), transparent), var(--void-950);
+      color: var(--ink-100);
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+      min-height: 100vh;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 96px 24px 64px; text-align: center; }
+    .logo { font-size: 56px; font-weight: 800; letter-spacing: 0.25em; }
+    .logo span { color: var(--accent-400); text-shadow: 0 0 24px var(--glow); }
+    .tagline { margin-top: 16px; color: var(--ink-300); font-size: 18px; line-height: 1.6; }
+    .cta { margin-top: 40px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 14px 28px; border-radius: 12px;
+      font-weight: 600; font-size: 15px; text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .btn-primary {
+      background: var(--accent-600); color: #fff;
+      box-shadow: 0 0 24px var(--glow);
+    }
+    .btn-primary:hover { background: var(--accent-500); box-shadow: 0 0 36px var(--glow); transform: translateY(-1px); }
+    .btn-outline { border: 1px solid var(--void-600); color: var(--ink-100); background: rgb(28 28 40 / 0.4); }
+    .btn-outline:hover { border-color: var(--accent-500); color: var(--accent-300); }
+    .features { margin-top: 88px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; text-align: left; }
+    .card { background: rgb(28 28 40 / 0.7); border: 1px solid var(--void-700); border-radius: 16px; padding: 24px; }
+    .card h3 { font-size: 16px; margin-bottom: 8px; color: var(--accent-300); }
+    .card p { font-size: 14px; color: var(--ink-300); line-height: 1.6; }
+    .hint {
+      margin: 28px auto 0; max-width: 460px; display: none;
+      background: rgb(28 28 40 / 0.9); border: 1px solid var(--void-600);
+      border-radius: 12px; padding: 14px 18px; font-size: 14px; color: var(--ink-300);
+    }
+    .hint.visible { display: block; }
+    footer { margin-top: 96px; font-size: 12px; color: var(--ink-500); line-height: 1.7; }
+    a { color: var(--accent-400); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 class="logo"><span>VOID</span> LAUNCHER</h1>
+    <p class="tagline">
+      A Minecraft launcher from the void — Microsoft login, CurseForge &amp; Modrinth built in,<br />
+      your own modpacks, and a one-click performance optimizer.
+    </p>
+
+    <div class="cta">
+      <!-- Point this at your CI-built NSIS installer (see docs/DISTRIBUTION.md) -->
+      <a class="btn btn-primary" href="https://github.com/weeeedddd/Void-Launcher/releases/latest">
+        ⬇ Download for Windows
+      </a>
+      <!-- Deep link demo: opens the installed launcher and searches this mod.
+           Grammar: voidlauncher://(mod|modpack)/(modrinth|curseforge)/<id> -->
+      <a class="btn btn-outline" href="voidlauncher://mod/modrinth/sodium" id="open-app">
+        ⚡ Open “Sodium” in the launcher
+      </a>
+    </div>
+
+    <!-- Shown if the deep link doesn't get picked up (launcher not installed).
+         Browsers give pages no reliable signal for custom-scheme launches, so
+         the standard pattern is: if this tab still has focus after ~1.5 s,
+         the scheme probably wasn't handled → show the fallback. -->
+    <div class="hint" id="fallback-hint">
+      Nothing happened? Then the launcher isn't installed yet — grab the
+      installer above, and this button will open the mod directly in the app.
+    </div>
+
+    <div class="features">
+      <div class="card">
+        <h3>Modpacks, your way</h3>
+        <p>Create instances with any Minecraft version and loader (Fabric, NeoForge, Forge, Quilt) and add mods from CurseForge &amp; Modrinth with one click.</p>
+      </div>
+      <div class="card">
+        <h3>Performance optimizer</h3>
+        <p>Scans your CPU, RAM and GPU, then tunes heap size and JVM flags — and installs the right Java automatically. You see every change it makes.</p>
+      </div>
+      <div class="card">
+        <h3>Share profiles as links</h3>
+        <p>Every mod and modpack can be shared as a <code>voidlauncher://</code> link that opens straight in the launcher — like the button above.</p>
+      </div>
+    </div>
+
+    <footer>
+      Not affiliated with Mojang or Microsoft. Minecraft is a trademark of Mojang Synergies AB.<br />
+      You need to own <a href="https://www.minecraft.net">Minecraft: Java Edition</a> to play.
+    </footer>
+  </main>
+
+  <script>
+    // Deep-link fallback UX (see comment on #fallback-hint above).
+    document.getElementById("open-app").addEventListener("click", () => {
+      setTimeout(() => {
+        if (document.hasFocus()) {
+          document.getElementById("fallback-hint").classList.add("visible");
+        }
+      }, 1500);
+    });
+  </script>
+</body>
+</html>

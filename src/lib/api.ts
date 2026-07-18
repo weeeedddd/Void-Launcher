@@ -2,13 +2,18 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   CreateInstanceSpec,
   DeviceCodeInfo,
+  HardwareReport,
   InstalledMod,
   Instance,
   InstanceSettings,
+  JavaRuntimeInfo,
+  JavaStatus,
   MinecraftProfile,
   ModLoader,
   ModSummary,
   ModVersionInfo,
+  OptimizationOutcome,
+  OptimizationTier,
   Platform,
   SearchParams,
 } from "@/types";
@@ -63,4 +68,21 @@ export const api = {
 
   // ── Launching ─────────────────────────────────────────────────────────
   launchInstance: (instanceId: string) => invoke<void>("launch_instance", { instanceId }),
+
+  // ── Performance Optimizer & Java management ───────────────────────────
+  /** Scans CPU, RAM, GPU and disk (runs on a Rust worker thread). */
+  getHardwareReport: () => invoke<HardwareReport>("get_hardware_report"),
+
+  /** Which Java an instance needs and whether it's already managed. */
+  getJavaStatus: (instanceId: string) => invoke<JavaStatus>("get_java_status", { instanceId }),
+
+  /** Downloads/verifies/extracts the matching Temurin JRE if missing.
+   *  Progress arrives via the "java-download-progress" event. */
+  ensureJavaForInstance: (instanceId: string) =>
+    invoke<JavaRuntimeInfo>("ensure_java_for_instance", { instanceId }),
+
+  /** Applies a full optimization pass (RAM, JVM flags, Java, GPU hint)
+   *  to an instance and returns the transparent change log. */
+  optimizeInstance: (instanceId: string, tier: OptimizationTier) =>
+    invoke<OptimizationOutcome>("optimize_instance", { instanceId, tier }),
 };

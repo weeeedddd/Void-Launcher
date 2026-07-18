@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useUiStore } from "@/stores/ui";
 import type { ModLoader, Platform } from "@/types";
 import { ModCard } from "./ModCard";
 
@@ -24,6 +25,16 @@ export function ModSearchPage() {
 
   // Debounce typing so we don't hammer the APIs on every keystroke.
   const debouncedQuery = useDebouncedValue(query);
+
+  // Deep links (voidlauncher://mod/...) land here as a pre-filled search.
+  const pendingSearch = useUiStore((s) => s.pendingSearch);
+  const setPendingSearch = useUiStore((s) => s.setPendingSearch);
+  useEffect(() => {
+    if (pendingSearch) {
+      setQuery(pendingSearch);
+      setPendingSearch(null);
+    }
+  }, [pendingSearch, setPendingSearch]);
 
   // The actual search — runs on the Rust side (see search_mods command).
   const {

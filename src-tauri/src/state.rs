@@ -52,6 +52,12 @@ impl AppState {
         self.data_dir.join("instances")
     }
 
+    /// Launcher-managed Java runtimes, one folder per major version
+    /// (e.g. `java/21/`). See system/java.rs.
+    pub fn java_dir(&self) -> PathBuf {
+        self.data_dir.join("java")
+    }
+
     /// Settings are re-read on demand — cheap, and it lets users edit the
     /// file while the launcher runs.
     pub fn settings(&self) -> Settings {

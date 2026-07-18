@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes } from "react";
+import { playClick } from "@/lib/sound";
 
 type Variant = "primary" | "outline" | "ghost" | "danger";
 
@@ -19,9 +20,17 @@ const variants: Record<Variant, string> = {
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
+  /** Opt out of the UI click sound for this button. */
+  silent?: boolean;
 }
 
-export function Button({ variant = "primary", className = "", ...props }: ButtonProps) {
+export function Button({
+  variant = "primary",
+  className = "",
+  silent = false,
+  onClick,
+  ...props
+}: ButtonProps) {
   return (
     <button
       className={
@@ -30,6 +39,11 @@ export function Button({ variant = "primary", className = "", ...props }: Button
         "disabled:pointer-events-none disabled:opacity-50 " +
         `${variants[variant]} ${className}`
       }
+      onClick={(event) => {
+        // Central hook-in for the subtle UI click sound (see lib/sound.ts).
+        if (!silent) playClick();
+        onClick?.(event);
+      }}
       {...props}
     />
   );

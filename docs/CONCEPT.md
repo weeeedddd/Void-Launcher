@@ -91,6 +91,15 @@ An instance = Minecraft version + loader + mod set + settings. Create in the UI,
 ### 3.4 Instance management & launch — *args scaffolded, pipeline M3 🚧*
 Per-instance RAM/Java/JVM-flags already editable and persisted. `launch/` builds the full JVM + game argument lists and spawns Java; what's missing is the download pipeline (manifest → client jar → libraries → assets → natives → loader profile). Options: implement natively (docs in `launch/mod.rs`) or adopt the `lyceris` crate which ships the whole pipeline incl. Fabric/Forge/NeoForge/Quilt.
 
+### 3.5 Dockable sidebar — *scaffolded ✅*
+The nav rail drags (or toggles) between the left and right screen edge with a FLIP-animated snap; docked side is persisted. Details: [ADVANCED_FEATURES.md §1](ADVANCED_FEATURES.md).
+
+### 3.6 Performance optimizer & Java auto-management — *scaffolded ✅*
+Hardware scan (sysinfo + per-OS GPU queries), Light/Balanced/Strong tiers for heap + JVM flags, Windows GPU preference, and fully automatic Temurin JRE installs isolated under `<data>/java/<major>/` — every change reported in a transparent log. Details: [ADVANCED_FEATURES.md §2–3](ADVANCED_FEATURES.md).
+
+### 3.7 Distribution: installer, website, deep links — *scaffolded ✅*
+Branded NSIS installer (dark-purple wizard art, completion chime hook), landing page with download + `voidlauncher://` share links routed through single-instance forwarding. Details: [DISTRIBUTION.md](DISTRIBUTION.md).
+
 ---
 
 ## 4. Design system — "Dark Purple"

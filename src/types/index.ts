@@ -111,3 +111,55 @@ export interface MinecraftProfile {
   uuid: string;
   name: string;
 }
+
+/* ── Performance Optimizer & Java management ──────────────────────────── */
+
+/** Snapshot of the machine, produced by the Rust `system::hardware` module. */
+export interface HardwareReport {
+  os: string;
+  cpuModel: string;
+  logicalCores: number;
+  cpuFrequencyMhz: number;
+  totalMemoryMb: number;
+  availableMemoryMb: number;
+  gpus: string[];
+  /** Disk hosting the launcher's data directory. */
+  diskTotalGb: number;
+  diskAvailableGb: number;
+}
+
+/** "Leicht / Mittel / Stark" — how aggressively to tune the instance. */
+export type OptimizationTier = "light" | "balanced" | "strong";
+
+/** One line of the transparent feedback log shown after optimizing. */
+export interface OptimizationLogEntry {
+  kind: "memory" | "jvm" | "java" | "gpu" | "info";
+  message: string;
+}
+
+/** A launcher-managed Java runtime (isolated under <data>/java/<major>). */
+export interface JavaRuntimeInfo {
+  major: number;
+  javaExecutable: string;
+  releaseName: string;
+  freshlyInstalled: boolean;
+}
+
+export interface OptimizationOutcome {
+  log: OptimizationLogEntry[];
+  memoryMb: number;
+  jvmArgs: string[];
+  java: JavaRuntimeInfo;
+}
+
+export interface JavaStatus {
+  requiredMajor: number;
+  installed: { javaExecutable: string; releaseName: string } | null;
+}
+
+/** Payload of the "java-download-progress" event emitted by the Rust side. */
+export interface JavaProgress {
+  phase: "download" | "verify" | "extract" | "done";
+  downloadedBytes: number;
+  totalBytes: number;
+}

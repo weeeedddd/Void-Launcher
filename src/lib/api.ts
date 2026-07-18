@@ -1,0 +1,66 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  CreateInstanceSpec,
+  DeviceCodeInfo,
+  InstalledMod,
+  Instance,
+  InstanceSettings,
+  MinecraftProfile,
+  ModLoader,
+  ModSummary,
+  ModVersionInfo,
+  Platform,
+  SearchParams,
+} from "@/types";
+
+/**
+ * Typed wrapper around Tauri's `invoke`.
+ *
+ * Every function here corresponds 1:1 to a `#[tauri::command]` in
+ * `src-tauri/src/**` — this file is the single place where the frontend
+ * touches the IPC boundary, so components stay free of magic strings.
+ *
+ * Note: Tauri automatically converts camelCase argument names (JS) to
+ * snake_case parameters (Rust), e.g. `instanceId` → `instance_id`.
+ */
+export const api = {
+  // ── Authentication ────────────────────────────────────────────────────
+  /** Step 1: request a device code the user enters on microsoft.com/link */
+  beginMicrosoftLogin: () => invoke<DeviceCodeInfo>("begin_microsoft_login"),
+
+  /** Step 2: blocks until the user finished the browser login, then runs
+   *  the full Xbox→XSTS→Minecraft token chain on the Rust side. */
+  completeMicrosoftLogin: (deviceCode: string) =>
+    invoke<MinecraftProfile>("complete_microsoft_login", { deviceCode }),
+
+  // ── Mod platforms (Modrinth / CurseForge) ─────────────────────────────
+  /** Unified search across the selected platform. */
+  searchMods: (params: SearchParams) => invoke<ModSummary[]>("search_mods", { params }),
+
+  /** All downloadable versions of a project, newest first. */
+  getModVersions: (
+    platform: Platform,
+    projectId: string,
+    gameVersion?: string,
+    loader?: ModLoader,
+  ) => invoke<ModVersionInfo[]>("get_mod_versions", { platform, projectId, gameVersion, loader }),
+
+  // ── Instances (modpack builder) ───────────────────────────────────────
+  listInstances: () => invoke<Instance[]>("list_instances"),
+
+  createInstance: (spec: CreateInstanceSpec) => invoke<Instance>("create_instance", { spec }),
+
+  updateInstanceSettings: (instanceId: string, settings: InstanceSettings) =>
+    invoke<Instance>("update_instance_settings", { instanceId, settings }),
+
+  /** Downloads the newest compatible version of a mod into the instance. */
+  installMod: (instanceId: string, platform: Platform, projectId: string) =>
+    invoke<InstalledMod>("install_mod", { instanceId, platform, projectId }),
+
+  /** Enable/disable an installed mod (renames the jar to `*.jar.disabled`). */
+  setModEnabled: (instanceId: string, fileName: string, enabled: boolean) =>
+    invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
+
+  // ── Launching ─────────────────────────────────────────────────────────
+  launchInstance: (instanceId: string) => invoke<void>("launch_instance", { instanceId }),
+};

@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Frontend build output
+dist/
+
+# Rust build output
+src-tauri/target/
+
+# Tauri generated schemas
+src-tauri/gen/
+
+# Local environment (CurseForge API key etc. — never commit secrets)
+.env
+.env.local
+
+# Editor/OS noise
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json

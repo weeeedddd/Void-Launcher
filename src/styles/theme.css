@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+/*
+ * ────────────────────────────────────────────────────────────────────────────
+ *  Void Launcher — "Dark Purple" design system
+ * ────────────────────────────────────────────────────────────────────────────
+ *  Tailwind CSS v4 is configured directly in CSS: every token declared inside
+ *  @theme automatically becomes a utility class.
+ *
+ *    --color-void-900   →  bg-void-900, text-void-900, border-void-900, …
+ *    --color-accent-500 →  bg-accent-500, ring-accent-500, …
+ *
+ *  Palette philosophy:
+ *    • Backgrounds: deep, slightly blue-tinted grays ("void") — never pure
+ *      black, so purple accents keep their glow without harsh contrast.
+ *    • Accents: a violet ramp (based on #8b5cf6) for primary actions,
+ *      active states and hover glows.
+ *    • Text: three levels of "ink" for hierarchy (bright / muted / faint).
+ */
+@theme {
+  /* ── Backgrounds: deep gray with a violet undertone ─────────────────── */
+  --color-void-950: #0b0b12; /* app background            */
+  --color-void-900: #111119; /* sidebar / elevated panels */
+  --color-void-850: #16161f; /* dialogs                   */
+  --color-void-800: #1c1c28; /* cards                     */
+  --color-void-700: #262635; /* borders, dividers         */
+  --color-void-600: #34344a; /* strong borders, inputs    */
+
+  /* ── Purple accent ramp ─────────────────────────────────────────────── */
+  --color-accent-300: #c4b5fd; /* subtle text accents          */
+  --color-accent-400: #a78bfa; /* icons, links, active labels  */
+  --color-accent-500: #8b5cf6; /* primary buttons (hover)      */
+  --color-accent-600: #7c3aed; /* primary buttons (rest)       */
+  --color-accent-700: #6d28d9; /* pressed states               */
+  --color-accent-800: #5b21b6; /* deep fills, selection        */
+
+  /* Glow used in box-shadows around primary actions & active nav items */
+  --color-accent-glow: rgb(139 92 246 / 0.35);
+
+  /* ── Text ───────────────────────────────────────────────────────────── */
+  --color-ink-100: #f2f2f8; /* headings, primary text */
+  --color-ink-300: #b6b6c8; /* body, secondary text   */
+  --color-ink-500: #767688; /* placeholders, hints    */
+
+  /* ── Typography ─────────────────────────────────────────────────────── */
+  --font-display: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Base element styling ─────────────────────────────────────────────── */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-void-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle purple radial glow behind the whole app — gives the "void" depth */
+#root {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgb(124 58 237 / 0.12), transparent),
+    var(--color-void-950);
+}
+
+/* ── Custom scrollbars to match the theme ─────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-void-600);
+  border-radius: 8px;
+  border: 2px solid var(--color-void-950);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-700);
+}
+
+/* ── Reusable component utilities ─────────────────────────────────────── */
+
+/* Standard form control look (inputs & selects) */
+@utility control {
+  background: var(--color-void-800);
+  border: 1px solid var(--color-void-600);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-100);
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.control:focus {
+  border-color: var(--color-accent-500);
+  box-shadow: 0 0 0 3px rgb(139 92 246 / 0.2);
+}
+.control::placeholder {
+  color: var(--color-ink-500);
+}

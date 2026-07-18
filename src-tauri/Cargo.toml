@@ -1,0 +1,40 @@
+[package]
+name = "void-launcher"
+version = "0.1.0"
+description = "A custom Minecraft launcher with Microsoft auth, CurseForge/Modrinth integration and a modpack builder."
+edition = "2021"
+
+# The lib name Tauri's mobile targets hook into; harmless on desktop.
+[lib]
+name = "void_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# Opens URLs in the system browser (Microsoft login page, mod pages)
+tauri-plugin-opener = "2"
+
+# Serialization — everything crossing the IPC boundary is serde camelCase
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client for all API calls (Microsoft/Xbox auth, Modrinth, CurseForge)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "process", "time"] }
+
+# Error handling
+thiserror = "2"
+
+# Instance ids, timestamps, download integrity
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha1_smol = "1"
+
+[profile.release]
+# Smaller, faster binaries for shipping
+codegen-units = 1
+lto = true
+strip = true

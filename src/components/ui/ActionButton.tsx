@@ -39,8 +39,24 @@ const VARIANTS: Record<ActionButtonVariant, VariantConfig> = {
   prepare: { label: "PREPARE & DOWNLOAD CLIENT", colors: ["#3C096C", "#7B2CBF", "#9D4EDD"], glow: "123,44,191" },
 };
 
+/** Content sizing per `size` prop — lets the same button scale from a form
+ *  CTA up to the massive dashboard centerpiece. */
+const SIZES = {
+  default: { pad: "px-9 py-4", text: "text-[15px]", icon: "h-5 w-5" },
+  lg: { pad: "px-12 py-5", text: "text-[17px]", icon: "h-6 w-6" },
+  xl: { pad: "px-16 py-6", text: "text-[19px]", icon: "h-7 w-7" },
+} as const;
+
 /** Per-variant icon with its own signature micro-animation on hover. */
-function VariantIcon({ variant, hovered }: { variant: ActionButtonVariant; hovered: boolean }) {
+function VariantIcon({
+  variant,
+  hovered,
+  iconClass,
+}: {
+  variant: ActionButtonVariant;
+  hovered: boolean;
+  iconClass: string;
+}) {
   // DOWNLOAD → arrow bobs downward, telegraphing "pull it down".
   if (variant === "download") {
     return (
@@ -49,7 +65,7 @@ function VariantIcon({ variant, hovered }: { variant: ActionButtonVariant; hover
         animate={hovered ? { y: [0, 5, 0] } : { y: 0 }}
         transition={{ duration: 0.9, repeat: hovered ? Infinity : 0, ease: "easeInOut" }}
       >
-        <ArrowDownToLine className="h-5 w-5" strokeWidth={2.5} />
+        <ArrowDownToLine className={iconClass} strokeWidth={2.5} />
       </motion.span>
     );
   }
@@ -58,7 +74,7 @@ function VariantIcon({ variant, hovered }: { variant: ActionButtonVariant; hover
   const Blade = variant === "play" ? Swords : Wand2;
   return (
     <span className="relative block">
-      <Blade className="h-5 w-5" strokeWidth={2.5} />
+      <Blade className={iconClass} strokeWidth={2.5} />
       <motion.span
         className="absolute -top-1.5 -right-1.5"
         initial={{ opacity: 0, scale: 0.5 }}
@@ -107,6 +123,8 @@ export interface ActionButtonProps
     "children" | "animate" | "onTapStart" | "onTap" | "onTapCancel" | "onHoverStart" | "onHoverEnd" | "ref"
   > {
   variant?: ActionButtonVariant;
+  /** Content scale — `xl` is the dashboard centerpiece. */
+  size?: keyof typeof SIZES;
   /** Override the variant's default label (e.g. "PLAY" → "RESUME"). */
   label?: string;
   /** Small secondary line under the label (e.g. "Fabric 1.21.1 · 8 GB"). */
@@ -119,6 +137,7 @@ export interface ActionButtonProps
 
 export function ActionButton({
   variant = "play",
+  size = "default",
   label,
   subLabel,
   icon,
@@ -128,6 +147,7 @@ export function ActionButton({
   className,
   ...props
 }: ActionButtonProps) {
+  const sz = SIZES[size];
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [burst, setBurst] = useState(0);
@@ -214,14 +234,21 @@ export function ActionButton({
         </span>
 
         {/* 5 — content */}
-        <span className="relative z-10 flex items-center justify-center gap-3 px-9 py-4">
+        <span className={cn("relative z-10 flex items-center justify-center gap-3", sz.pad)}>
           {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-white" />
+            <Loader2 className={cn(sz.icon, "animate-spin text-white")} />
           ) : (
-            <span className="text-white">{icon ?? <VariantIcon variant={variant} hovered={hovered} />}</span>
+            <span className="text-white">
+              {icon ?? <VariantIcon variant={variant} hovered={hovered} iconClass={sz.icon} />}
+            </span>
           )}
           <span className="flex flex-col items-start leading-none">
-            <span className="text-[15px] font-extrabold tracking-[0.18em] text-white uppercase drop-shadow-[0_1px_8px_rgba(0,0,0,0.55)]">
+            <span
+              className={cn(
+                "font-extrabold tracking-[0.18em] text-white uppercase drop-shadow-[0_1px_8px_rgba(0,0,0,0.55)]",
+                sz.text,
+              )}
+            >
               {label ?? cfg.label}
             </span>
             {subLabel && (

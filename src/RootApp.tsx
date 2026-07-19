@@ -2,7 +2,7 @@ import { AnimatePresence, motion, type Variants } from "motion/react";
 import { ObsidianBackground } from "@/components/layout/ObsidianBackground";
 import { StartupScreen } from "@/components/startup/StartupScreen";
 import { InstallerStage } from "@/components/installer/InstallerStage";
-import App from "@/App";
+import DashboardView from "@/components/dashboard/DashboardView";
 import { useStageStore } from "@/stores/stage";
 
 /**
@@ -15,9 +15,11 @@ import { useStageStore } from "@/stores/stage";
  *
  *      startup ──▶ installer ──▶ dashboard
  *
- *  The dashboard stage mounts the existing launcher shell (App.tsx: dockable
- *  sidebar + instances / mods / optimizer / settings), so nothing built so
- *  far is lost — the Eminence reskin of those inner pages is the next step.
+ *  The dashboard stage mounts the browser-only Eminence dashboard
+ *  (DashboardView: dockable sidebar + widgets grid + the massive PLAY button).
+ *  The earlier Tauri-backed launcher shell (App.tsx and its pages) stays in the
+ *  repo for the native build but is intentionally not mounted here, so this
+ *  runs flawlessly as a standard web UI.
  */
 
 // Enter/exit choreography shared by every stage: fade + gentle scale + blur.
@@ -46,7 +48,7 @@ export default function RootApp() {
         >
           {stage === "startup" && <StartupScreen />}
           {stage === "installer" && <InstallerStage />}
-          {stage === "dashboard" && <App />}
+          {stage === "dashboard" && <DashboardView />}
         </motion.div>
       </AnimatePresence>
     </div>

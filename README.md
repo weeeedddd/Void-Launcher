@@ -6,6 +6,16 @@ Built with **Tauri 2 + React + TypeScript + Tailwind CSS 4** (Rust backend).
 
 > ⚠️ Not affiliated with Mojang or Microsoft. Users must own Minecraft: Java Edition — this launcher only signs in legitimate accounts via the official Microsoft flow.
 
+## 🌐 Live website & UI concept board
+
+The `website/` folder is published with **GitHub Pages**:
+
+- **Landing page** → `https://weeeedddd.github.io/Void-Launcher/`
+- **“Step Beyond the Ordinary Client” — full UI concept** → `https://weeeedddd.github.io/Void-Launcher/mockup.html`
+  A single-canvas, *Eminence in Shadow* dark-fantasy mockup walking through the whole workflow: startup splash → installer → dashboard → the Void (chat + voice + Discord bridge) → modpack builder.
+
+> **Seeing a blank/white page on github.com?** That's expected — GitHub shows `.html` files as *source code*, not as a rendered site. Use the **Pages URLs above** instead. To turn Pages on (one time): **repo → Settings → Pages → Build and deployment → Source: “GitHub Actions”**. The [`Deploy website`](.github/workflows/pages.yml) workflow then publishes `website/` on every push. Locally you can just open `website/mockup.html` in any browser.
+
 ## Features
 
 | Status | Feature |
@@ -66,7 +76,10 @@ void-launcher/
 │       ├── system/             #   hardware scan, optimizer tiers, Temurin auto-install
 │       ├── state.rs            #   shared HTTP client, data dir, session
 │       └── error.rs            #   one serializable error type for all commands
-├── website/                    # landing page (download + voidlauncher:// links)
+├── website/                    # GitHub Pages site
+│   ├── index.html              #   landing page (download + voidlauncher:// links)
+│   └── mockup.html             #   "Eminence in Shadow" full UI concept board
+├── .github/workflows/pages.yml # deploys website/ to GitHub Pages
 └── docs/                       # concept & integration guides
 ```
 

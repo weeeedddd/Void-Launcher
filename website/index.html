@@ -63,6 +63,27 @@
     .hint.visible { display: block; }
 
     .showcase-link { margin-top: 40px; }
+
+    /* ── Downloads & verification ── */
+    .downloads { margin-top: 56px; text-align: left; }
+    .downloads h2 { text-align: center; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
+    .dl-grid { margin-top: 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+    .dl-card { background: rgba(17,13,23,0.7); border: 1px solid var(--edge); border-radius: 16px; padding: 22px; }
+    .dl-title { font-size: 15px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+    .dl-card p { margin-top: 8px; font-size: 13px; color: var(--dim); line-height: 1.6; }
+    .dl-links { margin-top: 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .btn.sm { padding: 11px 18px; font-size: 13px; border-radius: 10px; }
+    .dl-links a.sha { font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--edge); }
+    .dl-links a.sha:hover { color: var(--violet-hi); }
+    .tag { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--edge-hi); color: var(--violet-hi); }
+    .tag.muted { border-color: var(--edge); color: var(--faint); }
+    .verify { margin-top: 16px; background: rgba(5,5,5,0.6); border: 1px solid var(--edge); border-radius: 14px; padding: 18px 20px; }
+    .verify-h { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
+    .verify pre { margin: 12px 0; overflow-x: auto; background: #050505; border: 1px solid var(--edge); border-radius: 10px; padding: 12px 14px; }
+    .verify code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; color: var(--violet-hi); }
+    .verify p { font-size: 13px; color: var(--dim); line-height: 1.6; }
+    .verify p code { color: var(--violet-hi); }
+
     footer { margin-top: 80px; font-size: 12px; color: var(--faint); line-height: 1.8; }
   </style>
 </head>
@@ -105,6 +126,34 @@
       <div class="card"><h3>Performance optimizer</h3><p>Scans your CPU, RAM and GPU, tunes heap size and JVM flags, and installs the right Java automatically — every change shown.</p></div>
       <div class="card"><h3>Share profiles as links</h3><p>Mods and modpacks become <code>voidlauncher://</code> links that open straight in the client — like the button above.</p></div>
     </div>
+
+    <!-- ── Downloads & verification ── -->
+    <section class="downloads">
+      <h2>Downloads &amp; verification</h2>
+      <div class="dl-grid">
+        <div class="dl-card">
+          <div class="dl-title">Void Bootstrapper <span class="tag">Recommended</span></div>
+          <p>The one-time installer — downloads, verifies and installs the client, then launches it.</p>
+          <div class="dl-links">
+            <a class="btn btn-primary sm" href="https://github.com/weeeedddd/Void-Launcher/releases/latest/download/Void-Bootstrapper.exe">⬇ Void-Bootstrapper.exe</a>
+            <a class="sha" href="https://github.com/weeeedddd/Void-Launcher/releases/latest/download/Void-Bootstrapper.exe.sha256">SHA-256 ↗</a>
+          </div>
+        </div>
+        <div class="dl-card">
+          <div class="dl-title">Void Client <span class="tag muted">Advanced</span></div>
+          <p>The daily-use client on its own — normally installed for you by the Bootstrapper.</p>
+          <div class="dl-links">
+            <a class="btn btn-outline sm" href="https://github.com/weeeedddd/Void-Launcher/releases/latest/download/Void-Launcher-Client.exe">⬇ Void-Launcher-Client.exe</a>
+            <a class="sha" href="https://github.com/weeeedddd/Void-Launcher/releases/latest/download/Void-Launcher-Client.exe.sha256">SHA-256 ↗</a>
+          </div>
+        </div>
+      </div>
+      <div class="verify">
+        <div class="verify-h">Verify your download · PowerShell</div>
+        <pre><code>Get-FileHash .\Void-Bootstrapper.exe -Algorithm SHA256</code></pre>
+        <p>Compare the printed hash with the matching <code>.sha256</code> file above — every release publishes a checksum next to each executable.</p>
+      </div>
+    </section>
 
     <div class="showcase-link">
       <a class="btn btn-outline" href="./showcase/">✦ View the UI concept board</a>

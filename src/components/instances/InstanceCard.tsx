@@ -2,11 +2,16 @@ import { useMutation } from "@tanstack/react-query";
 import { LoaderCircle, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { useAccountStore } from "@/stores/account";
 import type { Instance } from "@/types";
 
 /** One instance tile: banner, name, version/loader chips, play button. */
 export function InstanceCard({ instance }: { instance: Instance }) {
-  const launch = useMutation({ mutationFn: () => api.launchInstance(instance.id) });
+  const accountMode = useAccountStore((state) => state.mode);
+  const developerMode = accountMode === "developer";
+  const offlineMode = accountMode === "offline";
+  const simulationMode = developerMode || offlineMode;
+  const launch = useMutation({ mutationFn: () => api.launchInstance(instance.id, simulationMode) });
   const modCount = instance.mods.filter((m) => m.enabled).length;
 
   return (
@@ -40,15 +45,16 @@ export function InstanceCard({ instance }: { instance: Instance }) {
           </div>
         </div>
 
-        <Button className="w-full" disabled={launch.isPending} onClick={() => launch.mutate()}>
+        <Button className={`w-full ${simulationMode ? "aaa-launch-pulse" : ""}`} disabled={launch.isPending} onClick={() => launch.mutate()}>
           {launch.isPending ? (
             <LoaderCircle size={15} className="animate-spin" />
           ) : (
             <Play size={15} />
           )}
-          Play
+          {launch.isPending ? (simulationMode ? "Simulating..." : "Launching...") : (offlineMode ? "Launch singleplayer" : developerMode ? "Simulate launch" : "Play")}
         </Button>
 
+        {launch.isSuccess && simulationMode && <p role="status" className="text-xs text-amber-300">{offlineMode ? "Singleplayer simulation complete." : "Simulation complete."} No game process was started.</p>}
         {launch.isError && <p className="text-xs text-red-400">{String(launch.error)}</p>}
       </div>
     </article>

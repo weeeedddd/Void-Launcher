@@ -27,6 +27,8 @@ pub struct MinecraftProfile {
 #[derive(Debug, Clone)]
 pub struct MinecraftSession {
     pub profile: MinecraftProfile,
+    /// Xbox user id used by modern launch arguments. It remains native-only.
+    pub xuid: String,
     /// Bearer token used when launching the game (valid ~24 h).
     pub access_token: String,
     pub expires_at: DateTime<Utc>,

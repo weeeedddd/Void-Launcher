@@ -1,0 +1,83 @@
+@import "tailwindcss" source("./");
+
+@theme {
+  --font-sans: "Space Grotesk Variable", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-display: "Orbitron", "Space Grotesk Variable", sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+:root {
+  color: #ffffff;
+  background: #050505;
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --void-obsidian: #050505;
+  --void-panel: #110d17;
+  --void-violet: #7b2cbf;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: #050505;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+select,
+label {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  pointer-events: none;
+}
+
+::selection {
+  color: #ffffff;
+  background: rgba(123, 44, 191, 0.62);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #08060b;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid #08060b;
+  background: #47215f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

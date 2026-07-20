@@ -16,6 +16,13 @@ import type {
   OptimizationTier,
   Platform,
   SearchParams,
+  SettingsStatus,
+  MusicConnectionState,
+  MusicPlaybackAction,
+  MusicProvider,
+  LauncherFolderKind,
+  StorageCategory,
+  StorageReport,
 } from "@/types";
 
 /**
@@ -37,6 +44,22 @@ export const api = {
    *  the full Xbox→XSTS→Minecraft token chain on the Rust side. */
   completeMicrosoftLogin: (deviceCode: string) =>
     invoke<MinecraftProfile>("complete_microsoft_login", { deviceCode }),
+
+  // ── Spotify + Google/YouTube ───────────────────────────────────────────
+  connectMusicProvider: (provider: MusicProvider) =>
+    invoke<MusicConnectionState>("connect_music_provider", { provider }),
+
+  getMusicConnection: (provider: MusicProvider) =>
+    invoke<MusicConnectionState>("get_music_connection", { provider }),
+
+  controlMusicPlayback: (
+    provider: MusicProvider,
+    action: MusicPlaybackAction,
+    positionMs?: number,
+  ) => invoke<MusicConnectionState>("control_music_playback", { provider, action, positionMs }),
+
+  disconnectMusicProvider: (provider: MusicProvider) =>
+    invoke<MusicConnectionState>("disconnect_music_provider", { provider }),
 
   // ── Mod platforms (Modrinth / CurseForge) ─────────────────────────────
   /** Unified search across the selected platform. */
@@ -67,7 +90,10 @@ export const api = {
     invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
 
   // ── Launching ─────────────────────────────────────────────────────────
-  launchInstance: (instanceId: string) => invoke<void>("launch_instance", { instanceId }),
+  /** Installs/verifies and starts the selected instance for a native-held,
+   *  authenticated Minecraft session. Developer/offline mode only simulates. */
+  launchInstance: (instanceId: string, developerTestMode = false) =>
+    invoke<void>("launch_instance", { instanceId, developerTestMode }),
 
   // ── Performance Optimizer & Java management ───────────────────────────
   /** Scans CPU, RAM, GPU and disk (runs on a Rust worker thread). */
@@ -85,4 +111,23 @@ export const api = {
    *  to an instance and returns the transparent change log. */
   optimizeInstance: (instanceId: string, tier: OptimizationTier) =>
     invoke<OptimizationOutcome>("optimize_instance", { instanceId, tier }),
+
+  // ── Local settings ────────────────────────────────────────────────────────
+  /** Reports only whether a key exists; the secret never comes back to React. */
+  getSettingsStatus: () => invoke<SettingsStatus>("get_settings_status"),
+
+  /** Saves a new key locally, or removes it when null is supplied. */
+  setCurseforgeApiKey: (apiKey: string | null) =>
+    invoke<SettingsStatus>("set_curseforge_api_key", { apiKey }),
+
+  // ── Native storage and launcher controls ────────────────────────────────
+  getStorageReport: () => invoke<StorageReport>("get_storage_report"),
+
+  openLauncherFolder: (kind: LauncherFolderKind, instanceId?: string) =>
+    invoke<void>("open_launcher_folder", { kind, instanceId }),
+
+  clearStorageCategory: (category: Extract<StorageCategory, "logs" | "cache">) =>
+    invoke<StorageReport>("clear_storage_category", { category }),
+
+  restartLauncher: () => invoke<void>("restart_launcher"),
 };

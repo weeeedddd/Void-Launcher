@@ -85,22 +85,29 @@ fn detect_gpus() -> Vec<String> {
         "powershell",
         &[
             "-NoProfile",
+            "-NonInteractive",
             "-Command",
             // WMI class Win32_VideoController — one line per GPU.
-            "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name",
+            "$names = @(); try { $names += Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object { $_.Name } } catch {}; try { $names += Get-PnpDevice -Class Display -PresentOnly -ErrorAction Stop | ForEach-Object { $_.FriendlyName } } catch {}; $names | Where-Object { $_ -and $_.Trim() } | Sort-Object -Unique",
         ],
     );
 
     #[cfg(target_os = "macos")]
     return run_lines(
         "sh",
-        &["-c", "system_profiler SPDisplaysDataType | awk -F': ' '/Chipset Model/ {print $2}'"],
+        &[
+            "-c",
+            "system_profiler SPDisplaysDataType | awk -F': ' '/Chipset Model/ {print $2}'",
+        ],
     );
 
     #[cfg(all(unix, not(target_os = "macos")))]
     return run_lines(
         "sh",
-        &["-c", "lspci 2>/dev/null | grep -Ei 'vga|3d|display' | sed 's/.*: //'"],
+        &[
+            "-c",
+            "lspci 2>/dev/null | grep -Ei 'vga|3d|display' | sed 's/.*: //'",
+        ],
     );
 
     Vec::new()
@@ -108,7 +115,16 @@ fn detect_gpus() -> Vec<String> {
 
 /// Runs a command and returns its non-empty stdout lines (empty on failure).
 fn run_lines(program: &str, args: &[&str]) -> Vec<String> {
-    std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    command
         .args(args)
         .output()
         .ok()

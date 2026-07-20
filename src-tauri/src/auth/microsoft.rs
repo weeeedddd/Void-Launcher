@@ -22,15 +22,15 @@ use serde::{Deserialize, Serialize};
 use super::{MinecraftProfile, MinecraftSession};
 use crate::error::LauncherError;
 
-/// TODO: replace with your own Azure application (client) ID.
-pub const CLIENT_ID: &str = "00000000-0000-0000-0000-000000000000";
+/// Public identifier of the Microsoft Entra application used by Void Launcher.
+/// OAuth desktop client IDs are not secrets and are expected to ship with the app.
+pub const CLIENT_ID: &str = "6b6c4d4a-c43b-4cee-9118-fee237a2ee3c";
 
 /// `XboxLive.signin` is the only scope Minecraft needs;
 /// `offline_access` additionally yields a refresh token.
 const SCOPE: &str = "XboxLive.signin offline_access";
 
-const DEVICE_CODE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
+const DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 const XBL_AUTH_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_AUTH_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
@@ -62,13 +62,76 @@ pub struct DeviceCodeResponse {
 pub async fn request_device_code(
     http: &reqwest::Client,
 ) -> Result<DeviceCodeResponse, LauncherError> {
+    let client_id = validate_client_id(CLIENT_ID)?;
     let resp = http
         .post(DEVICE_CODE_URL)
-        .form(&[("client_id", CLIENT_ID), ("scope", SCOPE)])
+        .form(&[("client_id", client_id), ("scope", SCOPE)])
         .send()
-        .await?
-        .error_for_status()?;
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(device_code_error(resp).await);
+    }
+
     Ok(resp.json().await?)
+}
+
+/// Desktop OAuth clients are public identifiers, but Microsoft still requires
+/// a real Entra Application (client) ID. Reject placeholders locally so users
+/// get an actionable message instead of an opaque HTTP 400 response.
+fn validate_client_id(client_id: &str) -> Result<&str, LauncherError> {
+    let client_id = client_id.trim();
+    let bytes = client_id.as_bytes();
+    let uuid_shape = bytes.len() == 36
+        && bytes.iter().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => *byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        });
+    let zero_placeholder = client_id == "00000000-0000-0000-0000-000000000000";
+
+    if !uuid_shape || zero_placeholder {
+        return Err(LauncherError::Config(
+            "Microsoft sign-in is not configured. Enter the Application (client) ID from your Microsoft Entra app registration."
+                .into(),
+        ));
+    }
+
+    Ok(client_id)
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthErrorResponse {
+    error: String,
+    #[serde(default)]
+    error_description: Option<String>,
+}
+
+async fn device_code_error(resp: reqwest::Response) -> LauncherError {
+    let status = resp.status();
+    match resp.json::<OAuthErrorResponse>().await {
+        Ok(error) => {
+            let detail = error
+                .error_description
+                .as_deref()
+                .map(clean_oauth_description)
+                .filter(|description| !description.is_empty())
+                .unwrap_or(error.error.as_str());
+            LauncherError::Auth(format!(
+                "Microsoft rejected the sign-in configuration ({status}): {detail}"
+            ))
+        }
+        Err(_) => LauncherError::Auth(format!(
+            "Microsoft rejected the sign-in configuration with HTTP {status}. Check the Application (client) ID and enable public client flows in Microsoft Entra."
+        )),
+    }
+}
+
+fn clean_oauth_description(description: &str) -> &str {
+    description
+        .split("\r\n")
+        .next()
+        .unwrap_or(description)
+        .trim()
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -88,6 +151,8 @@ pub struct MsaTokens {
 #[derive(Debug, Deserialize)]
 struct MsaTokenError {
     error: String,
+    #[serde(default)]
+    error_description: Option<String>,
 }
 
 /// Polls the token endpoint until the browser login completes.
@@ -96,19 +161,22 @@ pub async fn poll_for_msa_tokens(
     http: &reqwest::Client,
     device_code: &str,
 ) -> Result<MsaTokens, LauncherError> {
+    let client_id = validate_client_id(CLIENT_ID)?;
     let mut interval = std::time::Duration::from_secs(5);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15 * 60);
 
     loop {
         if std::time::Instant::now() > deadline {
-            return Err(LauncherError::Auth("Sign-in timed out — please try again.".into()));
+            return Err(LauncherError::Auth(
+                "Sign-in timed out — please try again.".into(),
+            ));
         }
         tokio::time::sleep(interval).await;
 
         let resp = http
             .post(TOKEN_URL)
             .form(&[
-                ("client_id", CLIENT_ID),
+                ("client_id", client_id),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
                 ("device_code", device_code),
             ])
@@ -126,15 +194,43 @@ pub async fn poll_for_msa_tokens(
             // We poll too fast — back off as the spec demands.
             "slow_down" => interval += std::time::Duration::from_secs(5),
             "authorization_declined" => {
-                return Err(LauncherError::Auth("Sign-in was cancelled in the browser.".into()))
+                return Err(LauncherError::Auth(
+                    "Sign-in was cancelled in the browser.".into(),
+                ))
             }
             "expired_token" => {
-                return Err(LauncherError::Auth("The code expired — please try again.".into()))
+                return Err(LauncherError::Auth(
+                    "The code expired — please try again.".into(),
+                ))
             }
             other => {
-                return Err(LauncherError::Auth(format!("Microsoft sign-in failed: {other}")))
+                let detail = err
+                    .error_description
+                    .as_deref()
+                    .map(clean_oauth_description)
+                    .filter(|description| !description.is_empty())
+                    .unwrap_or(other);
+                return Err(LauncherError::Auth(format!(
+                    "Microsoft sign-in failed: {detail}"
+                )));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_client_id;
+
+    #[test]
+    fn accepts_a_real_client_id_shape() {
+        assert!(validate_client_id("12345678-1234-abcd-9876-1234567890ab").is_ok());
+    }
+
+    #[test]
+    fn rejects_the_zero_placeholder_and_malformed_ids() {
+        assert!(validate_client_id("00000000-0000-0000-0000-000000000000").is_err());
+        assert!(validate_client_id("not-a-client-id").is_err());
     }
 }
 
@@ -159,6 +255,10 @@ struct XboxDisplayClaims {
 struct XboxUserInfo {
     /// The "user hash" — combined with the XSTS token in step 4.
     uhs: String,
+    /// Xbox user id. Some Xbox responses omit it, so launch can safely fall
+    /// back to an empty value for versions that do not consume auth_xuid.
+    #[serde(default)]
+    xid: Option<String>,
 }
 
 /// Step 2: trade the MSA access token for an Xbox Live token.
@@ -275,7 +375,11 @@ async fn fetch_profile(
     http: &reqwest::Client,
     mc_access_token: &str,
 ) -> Result<MinecraftProfile, LauncherError> {
-    let resp = http.get(MC_PROFILE_URL).bearer_auth(mc_access_token).send().await?;
+    let resp = http
+        .get(MC_PROFILE_URL)
+        .bearer_auth(mc_access_token)
+        .send()
+        .await?;
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(LauncherError::Auth(
@@ -286,7 +390,10 @@ async fn fetch_profile(
     }
 
     let profile: McProfileResponse = resp.error_for_status()?.json().await?;
-    Ok(MinecraftProfile { uuid: profile.id, name: profile.name })
+    Ok(MinecraftProfile {
+        uuid: profile.id,
+        name: profile.name,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -307,11 +414,18 @@ pub async fn login_with_msa(
         .clone();
 
     let xsts = xsts_auth(http, &xbl.token).await?;
+    let xuid = xsts
+        .display_claims
+        .xui
+        .first()
+        .and_then(|claim| claim.xid.clone())
+        .unwrap_or_default();
     let mc = minecraft_login(http, &user_hash, &xsts.token).await?;
     let profile = fetch_profile(http, &mc.access_token).await?;
 
     Ok(MinecraftSession {
         profile,
+        xuid,
         access_token: mc.access_token,
         expires_at: chrono::Utc::now() + chrono::Duration::seconds(mc.expires_in),
         msa_refresh_token: msa.refresh_token,

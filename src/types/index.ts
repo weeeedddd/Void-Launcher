@@ -128,7 +128,7 @@ export interface HardwareReport {
   diskAvailableGb: number;
 }
 
-/** "Leicht / Mittel / Stark" — how aggressively to tune the instance. */
+/** Light / Balanced / Strong — how aggressively to tune the instance. */
 export type OptimizationTier = "light" | "balanced" | "strong";
 
 /** One line of the transparent feedback log shown after optimizing. */
@@ -162,4 +162,50 @@ export interface JavaProgress {
   phase: "download" | "verify" | "extract" | "done";
   downloadedBytes: number;
   totalBytes: number;
+}
+
+/** Only exposes whether a CurseForge key exists; never returns the key itself. */
+export interface SettingsStatus {
+  curseforgeConfigured: boolean;
+}
+
+/* ── Native launcher storage ───────────────────────────────────────────── */
+
+export type StorageCategory = "logs" | "profiles" | "assets" | "cache";
+export type LauncherFolderKind = "launcherLogs" | "gameLogs";
+
+export interface StorageSegment {
+  category: StorageCategory;
+  bytes: number;
+}
+
+export interface StorageReport {
+  segments: StorageSegment[];
+  totalBytes: number;
+}
+
+/* ── Native music integrations ─────────────────────────────────────────── */
+
+export type MusicProvider = "spotify" | "youtube";
+export type MusicPlaybackAction = "play" | "pause" | "next" | "previous" | "seek";
+
+export interface MusicTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  artworkUrl: string | null;
+  durationMs: number;
+  positionMs: number;
+  isPlaying: boolean;
+}
+
+/** Sanitized provider state. OAuth access and refresh tokens never cross IPC. */
+export interface MusicConnectionState {
+  provider: MusicProvider;
+  connected: boolean;
+  displayName: string | null;
+  avatarUrl: string | null;
+  track: MusicTrack | null;
+  message: string | null;
 }

@@ -1,6 +1,7 @@
 //! Instance commands: the "custom modpack builder" backend.
 
 use serde::Deserialize;
+use std::path::{Component, Path};
 use tauri::State;
 use uuid::Uuid;
 
@@ -89,8 +90,13 @@ pub async fn install_mod(
     // 1) Ask the platform for versions matching this instance (newest first).
     let versions = match platform {
         Platform::Modrinth => {
-            modrinth::versions(&state.http, &project_id, Some(&instance.game_version), loader)
-                .await?
+            modrinth::versions(
+                &state.http,
+                &project_id,
+                Some(&instance.game_version),
+                loader,
+            )
+            .await?
         }
         Platform::Curseforge => {
             let api_key = require_curseforge_key(&state)?;
@@ -120,11 +126,18 @@ pub async fn install_mod(
                 .into(),
         )
     })?;
-    let bytes = state.http.get(&url).send().await?.error_for_status()?.bytes().await?;
+    let bytes = state
+        .http
+        .get(&url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
 
     // 3) Verify integrity when the platform provided a hash.
     if let Some(expected) = &version.sha1 {
-        let actual = sha1_smol::Sha1::from(&bytes).hexdigest();
+        let actual = sha1_smol::Sha1::from(&bytes).digest().to_string();
         if !actual.eq_ignore_ascii_case(expected) {
             return Err(LauncherError::InvalidData(format!(
                 "Download corrupted: SHA-1 mismatch for {} (expected {expected}, got {actual})",
@@ -134,6 +147,7 @@ pub async fn install_mod(
     }
 
     let mods_dir = instance.mods_dir(&root);
+    validate_mod_file_name(&version.file_name)?;
     tokio::fs::create_dir_all(&mods_dir).await?;
     tokio::fs::write(mods_dir.join(&version.file_name), &bytes).await?;
 
@@ -146,7 +160,9 @@ pub async fn install_mod(
         file_name: version.file_name,
         enabled: true,
     };
-    instance.mods.retain(|m| m.project_id != installed.project_id);
+    instance
+        .mods
+        .retain(|m| m.project_id != installed.project_id);
     instance.mods.push(installed.clone());
     instance.save(&root)?;
 
@@ -167,6 +183,17 @@ pub fn set_mod_enabled(
     let mut instance = Instance::find(&root, instance_id)?;
     let mods_dir = instance.mods_dir(&root);
 
+    validate_mod_file_name(&file_name)?;
+    if !instance
+        .mods
+        .iter()
+        .any(|entry| entry.file_name == file_name)
+    {
+        return Err(LauncherError::NotFound(
+            "The requested mod file is not registered in this instance.".into(),
+        ));
+    }
+
     let enabled_path = mods_dir.join(&file_name);
     let disabled_path = mods_dir.join(format!("{file_name}.disabled"));
     let (from, to) = if enabled {
@@ -183,4 +210,53 @@ pub fn set_mod_enabled(
     }
     instance.save(&root)?;
     Ok(())
+}
+
+fn validate_mod_file_name(file_name: &str) -> Result<(), LauncherError> {
+    if file_name.is_empty()
+        || file_name.contains('/')
+        || file_name.contains('\\')
+        || file_name.contains('\0')
+        || !file_name.to_ascii_lowercase().ends_with(".jar")
+    {
+        return Err(LauncherError::InvalidData(
+            "The mod platform returned an unsafe file name.".into(),
+        ));
+    }
+
+    let mut components = Path::new(file_name).components();
+    if !matches!(components.next(), Some(Component::Normal(_))) || components.next().is_some() {
+        return Err(LauncherError::InvalidData(
+            "The mod platform returned an unsafe file name.".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_mod_file_name;
+
+    #[test]
+    fn accepts_single_component_jar_names() {
+        assert!(validate_mod_file_name("sodium-fabric-0.6.0.jar").is_ok());
+        assert!(validate_mod_file_name("Example.JAR").is_ok());
+    }
+
+    #[test]
+    fn rejects_traversal_and_non_jar_names() {
+        for file_name in [
+            "../settings.json",
+            "..\\settings.json",
+            "mods/evil.jar",
+            "mods\\evil.jar",
+            "evil.exe",
+            "",
+        ] {
+            assert!(
+                validate_mod_file_name(file_name).is_err(),
+                "{file_name} should be rejected"
+            );
+        }
+    }
 }

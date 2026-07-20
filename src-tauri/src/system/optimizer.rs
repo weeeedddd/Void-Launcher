@@ -46,7 +46,10 @@ pub struct OptimizationLogEntry {
 
 impl OptimizationLogEntry {
     pub fn new(kind: LogKind, message: impl Into<String>) -> Self {
-        Self { kind, message: message.into() }
+        Self {
+            kind,
+            message: message.into(),
+        }
     }
 }
 
@@ -87,9 +90,9 @@ pub fn jvm_args_for(tier: OptimizationTier) -> Vec<String> {
         OptimizationTier::Strong => &[
             "-XX:+ParallelRefProcEnabled",
             "-XX:+UseStringDeduplication",
-            "-XX:+AlwaysPreTouch",       // commit the heap upfront: fewer page faults mid-game
+            "-XX:+AlwaysPreTouch", // commit the heap upfront: fewer page faults mid-game
             "-XX:+PerfDisableSharedMem", // avoids hiccups from perf-data file writes
-            "-XX:MaxInlineLevel=15",     // deeper inlining helps modded call chains
+            "-XX:MaxInlineLevel=15", // deeper inlining helps modded call chains
         ],
     };
     flags.iter().map(|flag| flag.to_string()).collect()
@@ -108,7 +111,10 @@ pub fn apply_gpu_preference(java_executable: &Path) -> OptimizationLogEntry {
                 LogKind::Gpu,
                 format!(
                     "Registered {} for the high-performance GPU (Windows graphics settings).",
-                    java_executable.file_name().unwrap_or_default().to_string_lossy()
+                    java_executable
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
                 ),
             ),
             Err(err) => OptimizationLogEntry::new(
@@ -137,6 +143,9 @@ fn set_gpu_preference_windows(java_executable: &Path) -> std::io::Result<()> {
     //     "<full exe path>" = "GpuPreference=2;"   (2 = high performance)
     let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
         .create_subkey(r"Software\Microsoft\DirectX\UserGpuPreferences")?;
-    key.set_value(java_executable.to_string_lossy().as_ref(), &"GpuPreference=2;")?;
+    key.set_value(
+        java_executable.to_string_lossy().as_ref(),
+        &"GpuPreference=2;",
+    )?;
     Ok(())
 }

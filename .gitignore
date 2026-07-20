@@ -20,3 +20,11 @@ src-tauri/gen/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Local browser smoke-test profiles and screenshots
+.qa-*/
+*-qa.png
+
+# Nested Tauri generated/build output (bootstrapper workspace)
+bootstrapper/src-tauri/gen/
+bootstrapper/src-tauri/target/

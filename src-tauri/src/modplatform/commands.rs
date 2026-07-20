@@ -50,8 +50,14 @@ pub async fn get_mod_versions(
         }
         Platform::Curseforge => {
             let api_key = require_curseforge_key(&state)?;
-            curseforge::files(&state.http, &api_key, &project_id, game_version.as_deref(), loader)
-                .await
+            curseforge::files(
+                &state.http,
+                &api_key,
+                &project_id,
+                game_version.as_deref(),
+                loader,
+            )
+            .await
         }
     }
 }

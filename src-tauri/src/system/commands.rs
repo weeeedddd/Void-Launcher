@@ -23,7 +23,9 @@ pub async fn get_hardware_report(
     state: State<'_, AppState>,
 ) -> Result<HardwareReport, LauncherError> {
     let data_dir = state.data_dir.clone();
-    task::spawn_blocking(move || hardware::scan(&data_dir)).await.map_err(join_err)
+    task::spawn_blocking(move || hardware::scan(&data_dir))
+        .await
+        .map_err(join_err)
 }
 
 #[derive(Debug, Serialize)]
@@ -50,15 +52,17 @@ pub fn get_java_status(
     let instance = Instance::find(&state.instances_dir(), instance_id)?;
     let required_major = java::required_java_major(&instance.game_version);
 
-    let installed = java::find_managed(&state.java_dir(), required_major).map(|bin| {
-        InstalledJavaInfo {
+    let installed =
+        java::find_managed(&state.java_dir(), required_major).map(|bin| InstalledJavaInfo {
             java_executable: bin.to_string_lossy().into_owned(),
             release_name: java::read_release_marker(&state.java_dir(), required_major)
                 .unwrap_or_else(|| format!("Temurin {required_major}")),
-        }
-    });
+        });
 
-    Ok(JavaStatus { required_major, installed })
+    Ok(JavaStatus {
+        required_major,
+        installed,
+    })
 }
 
 /// Makes sure the right Java exists for an instance (downloading Temurin in
@@ -114,7 +118,9 @@ pub async fn optimize_instance(
 
     // 1) Hardware snapshot
     let data_dir = state.data_dir.clone();
-    let report = task::spawn_blocking(move || hardware::scan(&data_dir)).await.map_err(join_err)?;
+    let report = task::spawn_blocking(move || hardware::scan(&data_dir))
+        .await
+        .map_err(join_err)?;
     log.push(OptimizationLogEntry::new(
         LogKind::Info,
         format!(
@@ -144,7 +150,11 @@ pub async fn optimize_instance(
         if jvm_args.is_empty() {
             "JVM flags: launcher G1 baseline only (stability first).".to_string()
         } else {
-            format!("Applied {} tuned JVM flags: {}.", jvm_args.len(), jvm_args.join(" "))
+            format!(
+                "Applied {} tuned JVM flags: {}.",
+                jvm_args.len(),
+                jvm_args.join(" ")
+            )
         },
     ));
     instance.extra_java_args = jvm_args.clone();
@@ -175,5 +185,10 @@ pub async fn optimize_instance(
     log.push(optimizer::apply_gpu_preference(&runtime.java_executable));
 
     instance.save(&instances_root)?;
-    Ok(OptimizationOutcome { log, memory_mb, jvm_args, java: runtime })
+    Ok(OptimizationOutcome {
+        log,
+        memory_mb,
+        jvm_args,
+        java: runtime,
+    })
 }

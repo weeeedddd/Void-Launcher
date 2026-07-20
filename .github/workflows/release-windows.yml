@@ -1,0 +1,221 @@
+name: Release Windows executables
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to create or update (for example v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build-and-release:
+    name: Build and release Windows executables
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+      RUST_BACKTRACE: "1"
+      RUST_TARGET: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Resolve and validate release tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_TAG: ${{ github.ref_name }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          $tag = if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $env:REQUESTED_TAG
+          } else {
+            $env:PUSH_TAG
+          }
+
+          if ($tag -notmatch '^v[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') {
+            throw "Release tag '$tag' is invalid. Use a tag such as v0.1.0 or v0.1.0-beta.1."
+          }
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "Resolved release tag: $tag" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up stable Rust
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add $env:RUST_TARGET
+          rustc --version
+          cargo --version
+
+      - name: Cache Rust dependencies and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-client
+            target-bootstrapper
+          key: windows-rust-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'bootstrapper/src-tauri/Cargo.lock', 'bootstrapper/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            windows-rust-
+
+      - name: Install frontend workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production main client executable
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $env:GITHUB_WORKSPACE "target-client"
+          npm run tauri:client -- build --no-bundle --ci --target $env:RUST_TARGET
+          if ($LASTEXITCODE -ne 0) {
+            throw "Production Client Tauri build failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Build production bootstrapper executable
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $env:GITHUB_WORKSPACE "target-bootstrapper"
+          npm run tauri:bootstrapper -- build --no-bundle --ci --target $env:RUST_TARGET
+          if ($LASTEXITCODE -ne 0) {
+            throw "Production Bootstrapper Tauri build failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Stage executables and SHA-256 checksums
+        run: |
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE "release"
+          $clientSource = Join-Path $env:GITHUB_WORKSPACE "target-client/$env:RUST_TARGET/release/void-launcher.exe"
+          $bootstrapperSource = Join-Path $env:GITHUB_WORKSPACE "target-bootstrapper/$env:RUST_TARGET/release/void-bootstrapper.exe"
+
+          foreach ($source in @($clientSource, $bootstrapperSource)) {
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+              throw "Expected executable was not produced: $source"
+            }
+          }
+
+          New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
+          Copy-Item -LiteralPath $clientSource -Destination (Join-Path $releaseDirectory "Void-Launcher-Client.exe") -Force
+          Copy-Item -LiteralPath $bootstrapperSource -Destination (Join-Path $releaseDirectory "Void-Bootstrapper.exe") -Force
+
+          foreach ($fileName in @("Void-Launcher-Client.exe", "Void-Bootstrapper.exe")) {
+            $executablePath = Join-Path $releaseDirectory $fileName
+            $checksumPath = "$executablePath.sha256"
+            $checksum = (Get-FileHash -LiteralPath $executablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            [System.IO.File]::WriteAllText($checksumPath, "$checksum  $fileName`n", [System.Text.Encoding]::ASCII)
+          }
+
+          $expectedFiles = @(
+            "Void-Launcher-Client.exe",
+            "Void-Launcher-Client.exe.sha256",
+            "Void-Bootstrapper.exe",
+            "Void-Bootstrapper.exe.sha256"
+          ) | Sort-Object
+          $actualFiles = Get-ChildItem -LiteralPath $releaseDirectory -File | Select-Object -ExpandProperty Name | Sort-Object
+          $difference = Compare-Object -ReferenceObject $expectedFiles -DifferenceObject $actualFiles
+          if ($difference) {
+            $renderedDifference = $difference | Out-String
+            throw "Release staging contains unexpected or missing files:`n$renderedDifference"
+          }
+
+          Get-ChildItem -LiteralPath $releaseDirectory -File |
+            Sort-Object Name |
+            Select-Object Name, Length |
+            Format-Table -AutoSize |
+            Out-String |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload verified workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: void-launcher-windows-${{ steps.release.outputs.tag }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            release/Void-Launcher-Client.exe
+            release/Void-Launcher-Client.exe.sha256
+            release/Void-Bootstrapper.exe
+            release/Void-Bootstrapper.exe.sha256
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $assets = @(
+            "release/Void-Launcher-Client.exe",
+            "release/Void-Launcher-Client.exe.sha256",
+            "release/Void-Bootstrapper.exe",
+            "release/Void-Bootstrapper.exe.sha256"
+          )
+
+          $releaseTags = @(gh release list --repo $env:GH_REPO --limit 1000 --json tagName --jq '.[].tagName')
+          if ($LASTEXITCODE -ne 0) {
+            throw "Listing existing releases failed."
+          }
+          $releaseExists = $releaseTags -contains $env:RELEASE_TAG
+
+          if ($releaseExists) {
+            $releaseStateJson = gh release view $env:RELEASE_TAG --repo $env:GH_REPO --json isDraft,isImmutable
+            if ($LASTEXITCODE -ne 0) {
+              throw "Reading release state for $env:RELEASE_TAG failed."
+            }
+            $releaseState = $releaseStateJson | ConvertFrom-Json
+            if ($releaseState.isImmutable) {
+              throw "Release $env:RELEASE_TAG is immutable and its assets cannot be replaced. Create a new tag instead."
+            }
+
+            & gh release upload $env:RELEASE_TAG @assets --clobber --repo $env:GH_REPO
+            if ($LASTEXITCODE -ne 0) {
+              throw "Updating assets for release $env:RELEASE_TAG failed."
+            }
+
+            if ($releaseState.isDraft) {
+              gh release edit $env:RELEASE_TAG --draft=false --repo $env:GH_REPO
+              if ($LASTEXITCODE -ne 0) {
+                throw "Publishing draft release $env:RELEASE_TAG failed."
+              }
+            }
+          } else {
+            & gh release create $env:RELEASE_TAG @assets `
+              --repo $env:GH_REPO `
+              --verify-tag `
+              --title "Void Launcher $env:RELEASE_TAG" `
+              --generate-notes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Creating release $env:RELEASE_TAG failed."
+            }
+          }
+
+          $releaseUrl = gh release view $env:RELEASE_TAG --repo $env:GH_REPO --json url --jq '.url'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Reading the final release URL failed."
+          }
+          "Published release: $releaseUrl" >> $env:GITHUB_STEP_SUMMARY

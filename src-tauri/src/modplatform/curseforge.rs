@@ -119,7 +119,11 @@ pub async fn search(
                 slug: m.slug,
                 name: m.name,
                 summary: m.summary,
-                author: m.authors.first().map(|a| a.name.clone()).unwrap_or_default(),
+                author: m
+                    .authors
+                    .first()
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default(),
                 icon_url: m.logo.and_then(|logo| logo.thumbnail_url),
                 downloads: m.download_count as u64,
                 categories: m.categories.into_iter().map(|c| c.name).collect(),

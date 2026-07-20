@@ -1,147 +1,96 @@
-import { ArrowLeftRight, Boxes, Gauge, GripVertical, LogIn, Search, Settings } from "lucide-react";
-import { motion, useDragControls, type PanInfo } from "motion/react";
-import { Button } from "@/components/ui/Button";
-import { useAccountStore } from "@/stores/account";
-import { useUiStore, type SidebarSide, type View } from "@/stores/ui";
+import { useCallback } from "react";
+import { ArrowLeft, ArrowRight, Boxes, Gauge, Home, PanelLeftClose, PanelLeftOpen, Settings, Sparkles } from "lucide-react";
+import { motion } from "motion/react";
+import { useUiStore, type View } from "@/stores/ui";
 
-const NAV: { view: View; label: string; icon: typeof Boxes }[] = [
-  { view: "instances", label: "Instances", icon: Boxes },
-  { view: "mods", label: "Mods", icon: Search },
-  { view: "optimizer", label: "Optimizer", icon: Gauge },
-  { view: "settings", label: "Settings", icon: Settings },
+const NAV: { view: View; label: string; eyebrow: string; icon: typeof Home }[] = [
+  { view: "instances", label: "Home", eyebrow: "Command center", icon: Home },
+  { view: "mods", label: "Mod Manager", eyebrow: "Mods & modpacks", icon: Boxes },
+  { view: "optimizer", label: "Performance", eyebrow: "System tuning", icon: Gauge },
+  { view: "settings", label: "Settings", eyebrow: "Launcher config", icon: Settings },
 ];
 
-/**
- * Dockable navigation rail — "snap and dock".
- *
- * How the docking works (and why it's fast):
- *  • The docked side is plain state (`sidebarSide`), persisted in zustand.
- *    Left vs. right is just CSS `order` on a flex row: sidebar 0|2, main 1.
- *  • `motion.aside layout` animates the order swap with the FLIP technique —
- *    Motion measures old/new positions and animates a GPU `transform`
- *    between them. No per-frame React renders, no reparenting, no layout
- *    thrash: one reflow at the swap, then compositor-only animation.
- *  • Dragging starts ONLY from the grip handle (`dragListener={false}` +
- *    `useDragControls`), so nav buttons stay plain clicks.
- *  • The drag itself is rubber-banded (constraints 0/0 + elastic): the
- *    panel nudges a few px while the *pointer position* decides the target
- *    half of the screen. Crossing the midpoint updates the glowing dock
- *    preview strip (rendered by App.tsx); releasing snaps the panel over.
- */
 export function Sidebar() {
-  const { view, setView, sidebarSide, setSidebarSide, toggleSidebarSide, setDockPreview } =
-    useUiStore();
-  const { profile, pending, error, login } = useAccountStore();
-  const dragControls = useDragControls();
+  const view = useUiStore((state) => state.view);
+  const setView = useUiStore((state) => state.setView);
+  const sidebarSide = useUiStore((state) => state.sidebarSide);
+  const toggleSidebarSide = useUiStore((state) => state.toggleSidebarSide);
+  const collapsed = useUiStore((state) => state.sidebarCollapsed);
+  const toggleCollapsed = useUiStore((state) => state.toggleSidebarCollapsed);
   const isLeft = sidebarSide === "left";
+  const MoveIcon = isLeft ? ArrowRight : ArrowLeft;
 
-  /** Which half of the window the pointer is currently in. */
-  const targetFor = (info: PanInfo): SidebarSide =>
-    info.point.x > window.innerWidth / 2 ? "right" : "left";
+  const selectView = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => setView(event.currentTarget.value as View),
+    [setView],
+  );
 
   return (
     <motion.aside
       layout
-      drag="x"
-      dragListener={false}
-      dragControls={dragControls}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.15}
-      dragMomentum={false}
-      onDrag={(_, info) => setDockPreview(targetFor(info))}
-      onDragEnd={(_, info) => {
-        setDockPreview(null);
-        setSidebarSide(targetFor(info));
-      }}
-      transition={{ layout: { type: "spring", stiffness: 380, damping: 34 } }}
+      transition={{ layout: { type: "spring", stiffness: 360, damping: 34 } }}
       style={{ order: isLeft ? 0 : 2 }}
-      className={
-        "flex w-60 shrink-0 flex-col bg-void-900/80 " +
-        (isLeft ? "border-r" : "border-l") +
-        " border-void-700/60"
-      }
+      className={`relative flex w-18 shrink-0 flex-col bg-[#08070a]/92 px-2 pb-3 backdrop-blur-2xl sm:w-20 lg:px-3 lg:pb-5 ${collapsed ? "lg:w-20" : "lg:w-67"} ${isLeft ? "border-r border-white/6" : "border-l border-white/6"}`}
     >
-      {/* ── Brand + dock controls ── */}
-      <div className="flex items-center gap-1 px-3 py-6">
-        <button
-          title="Drag to dock the sidebar left or right"
-          onPointerDown={(e) => dragControls.start(e)}
-          className="cursor-grab touch-none rounded p-1 text-ink-500 transition-colors hover:text-accent-400 active:cursor-grabbing"
-        >
-          <GripVertical size={16} />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-28 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-accent-500/12 blur-3xl" />
+        <div className={`shadow-energy-rail absolute inset-y-0 w-px opacity-40 ${isLeft ? "right-0" : "left-0"}`} />
+      </div>
+
+      <div className="relative flex items-center justify-center gap-2 py-4 lg:justify-end">
+        <button type="button" onClick={toggleCollapsed} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} className="hidden size-10 cursor-pointer place-items-center rounded-xl border border-white/7 bg-white/[0.028] text-ink-500 transition hover:border-accent-500/35 hover:text-accent-300 focus-visible:outline-2 focus-visible:outline-accent-400 lg:grid">
+          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
         </button>
-        <h1 className="flex-1 text-lg font-bold tracking-[0.2em]">
-          <span className="text-accent-400 drop-shadow-[0_0_10px_var(--color-accent-glow)]">
-            VOID
-          </span>
-        </h1>
         <button
-          title={`Dock sidebar ${isLeft ? "right" : "left"}`}
+          type="button"
+          aria-label={`Move sidebar to the ${isLeft ? "right" : "left"}`}
+          title={`Move sidebar to the ${isLeft ? "right" : "left"}`}
           onClick={toggleSidebarSide}
-          className="cursor-pointer rounded p-1.5 text-ink-500 transition-colors hover:bg-void-800 hover:text-accent-400"
+          className="hidden size-10 cursor-pointer place-items-center rounded-xl border border-white/7 bg-white/[0.028] text-ink-500 transition duration-200 hover:border-accent-500/35 hover:bg-accent-500/12 hover:text-accent-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 lg:grid"
         >
-          <ArrowLeftRight size={16} />
+          <MoveIcon size={18} strokeWidth={1.8} />
         </button>
       </div>
 
-      {/* ── Navigation ── */}
-      <nav className="flex flex-1 flex-col gap-1 px-3">
-        {NAV.map(({ view: v, label, icon: Icon }) => {
-          const active = v === view;
-          // The active indicator bar mirrors to the outer edge per side.
-          const activeClasses = isLeft
-            ? "shadow-[inset_2px_0_0_var(--color-accent-500)]"
-            : "shadow-[inset_-2px_0_0_var(--color-accent-500)]";
+      <div className={`relative mb-5 px-2 ${collapsed ? "lg:hidden" : "hidden lg:block"}`}>
+        <div className="mb-1 flex items-center gap-2">
+          <Sparkles size={12} strokeWidth={1.8} className="text-accent-400" />
+          <span className="text-[10px] font-bold tracking-[0.22em] text-accent-300 uppercase">Navigation</span>
+        </div>
+        <p className="text-xs leading-relaxed text-ink-500">Build in silence. Launch with power.</p>
+      </div>
+
+      <nav aria-label="Main navigation" className="relative flex flex-1 flex-col gap-2">
+        {NAV.map(({ view: navView, label, eyebrow, icon: Icon }) => {
+          const active = navView === view;
           return (
             <button
-              key={v}
-              onClick={() => setView(v)}
-              className={
-                "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors " +
-                (active
-                  ? `bg-accent-600/15 text-accent-300 ${activeClasses}`
-                  : "text-ink-300 hover:bg-void-800 hover:text-ink-100")
-              }
+              key={navView}
+              type="button"
+              value={navView}
+              onClick={selectView}
+              aria-current={active ? "page" : undefined}
+              title={label}
+              className={`group relative flex cursor-pointer items-center justify-center gap-3 overflow-hidden rounded-xl border px-2 py-3 text-left transition-all duration-200 focus-visible:outline-2 focus-visible:outline-accent-400 lg:justify-start ${active ? "border-accent-500/35 bg-accent-500/12 shadow-[0_10px_34px_rgb(123_44_191_/_0.12)]" : "border-transparent text-ink-300 hover:border-white/6 hover:bg-white/[0.035] hover:text-white"}`}
             >
-              <Icon size={18} />
-              {label}
+              {active && <motion.span layoutId="sidebar-active" className={`shadow-energy-rail absolute inset-y-2 w-0.5 rounded-full ${isLeft ? "left-0" : "right-0"}`} />}
+              <span className={`grid size-9 shrink-0 place-items-center rounded-lg transition ${active ? "bg-accent-500/18 text-accent-300" : "bg-white/[0.035] text-ink-500 group-hover:text-accent-300"}`}>
+                <Icon size={17} strokeWidth={1.8} />
+              </span>
+              <span className={`min-w-0 ${collapsed ? "lg:hidden" : "hidden lg:block"}`}>
+                <span className="block truncate text-sm font-semibold">{label}</span>
+                <span className="block text-[10px] tracking-wide text-ink-500">{eyebrow}</span>
+              </span>
             </button>
           );
         })}
       </nav>
 
-      {/* ── Account ── */}
-      <div className="border-t border-void-700/60 p-4">
-        {profile ? (
-          <div className="flex items-center gap-3">
-            {/* Crafatar renders the player's skin head from their UUID */}
-            <img
-              src={`https://crafatar.com/avatars/${profile.uuid}?size=64&overlay`}
-              alt=""
-              className="h-9 w-9 rounded-md"
-            />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{profile.name}</p>
-              <p className="text-xs text-ink-500">Signed in</p>
-            </div>
-          </div>
-        ) : pending ? (
-          <p className="text-xs leading-relaxed text-ink-300">
-            Enter code{" "}
-            <span className="select-text font-mono text-sm text-accent-300">
-              {pending.userCode}
-            </span>{" "}
-            in the browser window that just opened…
-          </p>
-        ) : (
-          <>
-            <Button variant="outline" className="w-full" onClick={() => void login()}>
-              <LogIn size={16} />
-              Sign in with Microsoft
-            </Button>
-            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-          </>
-        )}
+      <div className={`relative rounded-xl border border-success-500/15 bg-success-500/[0.035] p-3 ${collapsed ? "grid place-items-center" : ""}`}>
+        <div className="flex items-center gap-2 text-xs font-semibold text-success-400">
+          <span className="size-2 shrink-0 rounded-full bg-success-500 shadow-[0_0_10px_var(--color-success-glow)]" /> <span className={collapsed ? "hidden" : "hidden lg:inline"}>Systems operational</span>
+        </div>
+        <p className={`mt-1 text-[10px] leading-relaxed text-ink-500 ${collapsed ? "hidden" : "hidden lg:block"}`}>Tauri Desktop · Secure runtime</p>
       </div>
     </motion.aside>
   );

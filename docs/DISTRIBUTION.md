@@ -1,84 +1,68 @@
-# Distribution — Branded Installer, Windows EXE, Website & Deep Links
+# Distribution — Two Windows Applications
 
-How Void Launcher gets to users. Config lives in
-[`tauri.conf.json`](../src-tauri/tauri.conf.json) (`bundle.windows.nsis`, `plugins.deep-link`)
-and [`src-tauri/installer/`](../src-tauri/installer/).
+Void Launcher is intentionally shipped as two separate native applications:
 
----
+1. **Void Bootstrapper** (`Void-Bootstrapper.exe`) is the small, one-time installer. It selects a destination, downloads and verifies the client, creates shortcuts, registers `voidlauncher://`, starts the client and exits.
+2. **Void Client** (`Void-Launcher-Client.exe`) is the daily-use launcher. Its bundle contains only the dashboard, settings, storage, notification, account and crash views; it has no installer state or installer UI.
 
-## 1. Building the Windows `.exe`
+The split is enforced by separate Vite projects and separate Tauri manifests:
 
-```bash
-npm run tauri build          # on a Windows machine or CI runner
+| App | Frontend | Native project | Product / identifier |
+| --- | --- | --- | --- |
+| Bootstrapper | `bootstrapper/` | `bootstrapper/src-tauri/` | `Void Bootstrapper` / `dev.void.bootstrapper` |
+| Client | `src/` | `src-tauri/` | `Void Launcher` / `dev.void.launcher` |
+
+## Local builds
+
+Install the workspace once:
+
+```powershell
+npm install
 ```
 
-Outputs (in `src-tauri/target/release/bundle/`):
+Build the two web payloads independently:
 
-- `nsis/Void Launcher_0.1.0_x64-setup.exe` — the **NSIS installer** (what you ship)
-- plus the bare `void-launcher.exe` next to it (portable use)
-
-Cross-note: Windows installers must be built **on Windows** — use a GitHub Actions matrix (`windows-latest`) with `tauri-apps/tauri-action`; it builds, signs (if configured) and attaches artifacts to a GitHub Release, which is exactly what the website's download button links to. Code-signing (OV/EV cert or Azure Trusted Signing) is strongly recommended — unsigned installers trip SmartScreen.
-
-## 2. The branded installer
-
-### Tool comparison
-
-| Tool | Look & feel ceiling | Sound | Effort | Verdict |
-| --- | --- | --- | --- | --- |
-| **Tauri's NSIS bundler** (ours) | header + sidebar bitmaps, icon, hooks, or a fully custom `.nsi` template | WAV via `winmm.dll` call in a hook | low | ✅ best default — stays inside `tauri build` |
-| Raw **NSIS** custom template | anything (nsDialogs, custom pages) | same | high | when the wizard itself must be fully custom |
-| **Inno Setup** | `WizardImageFile`, Pascal scripting, custom pages | via DLL calls | medium | fine, but outside the Tauri pipeline |
-| **WiX (MSI)** | theming is hardest | no | high | enterprise/GPO deployments |
-
-### What's configured here
-
-`tauri.conf.json → bundle.windows.nsis`:
-
-- `installerIcon` / `headerImage` (150×57 BMP) / `sidebarImage` (164×314 BMP) — the purple-gradient placeholders in `src-tauri/installer/` set the dark-purple tone on the welcome/finish pages; swap them for real branding (same paths & sizes).
-- `installMode: currentUser` — no UAC prompt, smoother first impression.
-- `installerHooks: installer/hooks.nsh` — Tauri's four extension points (`NSIS_HOOK_PRE/POSTINSTALL`, `PRE/POSTUNINSTALL`). Ours plays a completion chime via `winmm.dll::PlaySoundW` if you ship `sounds/done.wav` as a bundle resource (`"resources": ["sounds/done.wav"]`); it's a silent no-op otherwise.
-
-### The honest limit — and the pattern that beats it
-
-The NSIS wizard is a Win32 dialog: bitmaps, yes — **CSS-grade animations, no**. Every launcher with a genuinely "immersive" install experience (Discord-style) uses the same trick:
-
-> **Keep the system installer minimal, do the show in-app.** The installer's only job is copying files + registering the URL scheme. The *first run* of the app then shows a branded bootstrap screen — animated logo, glowing progress bar, WebAudio sounds — while it downloads Java runtimes and assets.
-
-Void Launcher is already built for this: the optimizer's Java download streams progress events into an animated purple progress bar, and `src/lib/sound.ts` synthesizes the subtle click/success sounds (no audio files). Wrapping that into a dedicated first-run screen is UI work only — no installer hacking, and the same experience ships on every OS.
-
-## 3. Landing page (`website/index.html`)
-
-A single self-contained file using the launcher's design tokens:
-
-- **Hero** — logo wordmark + one-line pitch.
-- **Download CTA** → `https://github.com/weeeedddd/Void-Launcher/releases/latest` (always the newest CI build; swap for your domain later).
-- **Deep-link demo button** → `voidlauncher://mod/modrinth/sodium`, with the standard fallback UX: browsers give no reliable "scheme not handled" signal, so if the tab still has focus ~1.5 s after the click, the page shows a "launcher not installed?" hint.
-- **Feature cards + legal footer.**
-
-Host it anywhere static (GitHub Pages, Cloudflare Pages). Natural extensions: an `/api/latest` redirect for stable download URLs, and share pages like `void.dev/pack/<id>` that render pack info and link `voidlauncher://modpack/...`.
-
-## 4. Deep linking (`voidlauncher://`)
-
-End-to-end flow:
-
-```
-website <a href="voidlauncher://mod/modrinth/sodium">
-   │  scheme registered by the NSIS installer (deep-link plugin config)
-   ▼
-OS launches (or signals) Void Launcher
-   ├─ app already running → single-instance plugin forwards argv,
-   │                        refocuses the window (lib.rs)
-   └─ cold start / runtime → deep-link plugin on_open_url (lib.rs)
-   ▼
-Rust emits "deep-link" event ─► App.tsx ─► parseDeepLink() (strict grammar)
-   ▼
-mod browser opens with the shared project pre-searched
+```powershell
+npm run build:client
+npm run build:bootstrapper
 ```
 
-Pieces involved:
+Build production Windows executables with the Tauri CLI (no NSIS wrapper is required; the Bootstrapper is the installer):
 
-- `tauri.conf.json → plugins.deep-link.desktop.schemes: ["voidlauncher"]` — the NSIS/deb bundles register the scheme at install time; in dev, `register_all()` does it at runtime (`lib.rs`).
-- `tauri-plugin-single-instance` (registered **first**, with the `deep-link` feature) — on Windows a clicked link starts a second process; the plugin hands its argv to the running instance instead.
-- `src/lib/deeplink.ts` — **treat URLs as untrusted input**: strict regex grammar (`voidlauncher://(mod|modpack)/(modrinth|curseforge)/<id>`), conservative id charset, unknown links ignored. Never feed URL contents into shell commands or file paths.
+```powershell
+npm run release:client
+npm run release:bootstrapper
+```
 
-URL grammar today: `mod` and `modpack` kinds; the scaffold routes both to a pre-filled mod search. Milestone 5 upgrades the `modpack` kind into a full pack import (resolve manifest → create instance → install mods).
+Do not ship an executable produced by plain `cargo build`. That command keeps Tauri's development configuration and makes the WebView request the local Vite URL. `tauri build --no-bundle` runs the frontend build and embeds `frontendDist` into the executable.
+
+The resulting Cargo binaries are named `void-launcher.exe` and `void-bootstrapper.exe`. For shipping, rename them exactly to `Void-Launcher-Client.exe` and `Void-Bootstrapper.exe` and publish the companion SHA-256 files.
+
+## Release contract
+
+`.github/workflows/release-windows.yml` runs on `v*` tags or manually with an existing tag. It builds Windows x64/MSVC binaries and publishes exactly these assets:
+
+```text
+Void-Launcher-Client.exe
+Void-Launcher-Client.exe.sha256
+Void-Bootstrapper.exe
+Void-Bootstrapper.exe.sha256
+```
+
+The Bootstrapper queries the public latest release endpoint for `weeeedddd/Void-Launcher`. It accepts only the exact client filename and its exact companion checksum, follows HTTPS redirects only to GitHub release hosts, caps metadata/checksum/payload sizes, streams to a `.part` file, verifies the SHA-256 and PE `MZ` signature, then atomically activates the file. A missing release or missing checksum is a hard install error; the Bootstrapper never falls back to an unverified URL.
+
+The current local build is unsigned. Before distributing to other users, sign both EXEs with an Authenticode certificate (or Azure Trusted Signing) and keep the checksum generated after signing.
+
+## Native window and process behavior
+
+Both binaries use the Windows GUI subsystem. Starting the client from the Bootstrapper uses `CREATE_NO_WINDOW`, so no background CMD window is opened. The Bootstrapper creates a Desktop shortcut, a Start Menu shortcut and the per-user `voidlauncher://` protocol registration without requiring administrator privileges.
+
+## Optional design-board preview
+
+The static workflow showcase remains available separately:
+
+```powershell
+npm run build:workflow
+```
+
+It emits to `dist-workflow/` and is never an input to either Tauri application.

@@ -8,7 +8,7 @@ import type { Platform } from "@/types";
  *
  * The scheme is registered by the installer (see tauri.conf.json →
  * plugins.deep-link); the Rust side forwards incoming URLs as a
- * "deep-link" event which App.tsx consumes.
+ * "deep-link" event which VoidClientApp.tsx consumes.
  */
 export interface DeepLink {
   kind: "mod" | "modpack";

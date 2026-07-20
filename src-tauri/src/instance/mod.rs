@@ -92,12 +92,17 @@ impl Instance {
     pub fn save(&self, instances_root: &Path) -> Result<(), LauncherError> {
         let dir = self.dir(instances_root);
         std::fs::create_dir_all(dir.join("mods"))?;
-        std::fs::write(dir.join("instance.json"), serde_json::to_string_pretty(self)?)?;
+        std::fs::write(
+            dir.join("instance.json"),
+            serde_json::to_string_pretty(self)?,
+        )?;
         Ok(())
     }
 
     pub fn load(manifest_path: &Path) -> Result<Instance, LauncherError> {
-        Ok(serde_json::from_str(&std::fs::read_to_string(manifest_path)?)?)
+        Ok(serde_json::from_str(&std::fs::read_to_string(
+            manifest_path,
+        )?)?)
     }
 
     /// Loads every instance; corrupt folders are skipped (with a log line)

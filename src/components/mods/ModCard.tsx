@@ -1,91 +1,66 @@
-import { useMutation } from "@tanstack/react-query";
-import { Check, Download, ExternalLink, LoaderCircle, Package } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button } from "@/components/ui/Button";
-import { playSuccess } from "@/lib/sound";
+import { useCallback } from "react";
+import { ArrowUpRight, Download, Package, Sparkles } from "lucide-react";
+import { motion } from "motion/react";
 import type { ModSummary } from "@/types";
 
 const compact = new Intl.NumberFormat("en", { notation: "compact" });
 
 interface ModCardProps {
   mod: ModSummary;
-  /** Installs the mod into the selected instance; undefined ⇒ no instance yet. */
-  onInstall?: () => Promise<unknown>;
+  onSelect: (mod: ModSummary) => void;
 }
 
-/** One search result: icon, meta, categories and a one-click install button. */
-export function ModCard({ mod, onInstall }: ModCardProps) {
-  const install = useMutation({
-    mutationFn: onInstall ?? (() => Promise.resolve()),
-    onSuccess: () => playSuccess(),
-  });
+export function ModCard({ mod, onSelect }: ModCardProps) {
+  const selectMod = useCallback(() => onSelect(mod), [mod, onSelect]);
 
   return (
-    <article
-      className="group flex flex-col gap-3 rounded-xl border border-void-700 bg-void-800/70 p-4
-                 transition-all duration-150 hover:border-accent-700 hover:bg-void-800
-                 hover:shadow-[0_0_24px_rgb(124_58_237_/_0.12)]"
-    >
-      <div className="flex items-start gap-3">
-        {/* Project icon (fallback: package glyph on a purple gradient) */}
-        {mod.iconUrl ? (
-          <img src={mod.iconUrl} alt="" className="h-12 w-12 rounded-lg bg-void-700 object-cover" />
-        ) : (
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-accent-800 to-void-700">
-            <Package size={20} className="text-accent-300" />
+    <motion.article layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+      <button
+        type="button"
+        onClick={selectMod}
+        className="group shadow-panel relative flex h-full min-h-66 w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/7 p-0 text-left transition duration-250 hover:-translate-y-1 hover:border-accent-500/38 hover:shadow-[0_24px_60px_rgb(0_0_0_/_0.48),0_0_28px_rgb(123_44_191_/_0.14)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
+      >
+        <div className="relative h-24 overflow-hidden border-b border-white/6 bg-gradient-to-br from-[#181020] via-[#0d0a13] to-[#071023]">
+          <div className="absolute -top-12 -right-4 size-32 rounded-full bg-accent-500/24 blur-3xl transition duration-500 group-hover:bg-accent-500/35" />
+          <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(120deg,transparent_35%,rgb(123_44_191_/_0.6)_50%,transparent_65%)] [background-size:220%_100%] transition-[background-position] duration-700 group-hover:[background-position:100%_0]" />
+          <div className="absolute right-4 bottom-3 flex items-center gap-1.5 text-[9px] font-bold tracking-[0.16em] text-white/45 uppercase">
+            <Sparkles size={11} /> {mod.platform}
           </div>
-        )}
-
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate font-semibold text-ink-100">{mod.name}</h3>
-          <p className="truncate text-xs text-ink-500">
-            by {mod.author || "unknown"} · {compact.format(mod.downloads)} downloads
-          </p>
         </div>
 
-        {/* Open the mod's page on modrinth.com / curseforge.com */}
-        <button
-          title={`Open on ${mod.platform}`}
-          onClick={() => void openUrl(mod.pageUrl)}
-          className="cursor-pointer text-ink-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent-400"
-        >
-          <ExternalLink size={16} />
-        </button>
-      </div>
-
-      <p className="line-clamp-2 min-h-8 text-sm leading-relaxed text-ink-300">{mod.summary}</p>
-
-      <div className="mt-auto flex items-center justify-between gap-2">
-        {/* First few category tags */}
-        <div className="flex min-w-0 gap-1.5">
-          {mod.categories.slice(0, 3).map((c) => (
-            <span
-              key={c}
-              className="truncate rounded-md bg-void-700/70 px-2 py-0.5 text-[11px] font-medium text-ink-300"
-            >
-              {c}
-            </span>
-          ))}
-        </div>
-
-        <Button
-          className="px-3 py-1.5"
-          disabled={!onInstall || install.isPending || install.isSuccess}
-          title={onInstall ? undefined : "Create an instance first"}
-          onClick={() => install.mutate()}
-        >
-          {install.isPending ? (
-            <LoaderCircle size={14} className="animate-spin" />
-          ) : install.isSuccess ? (
-            <Check size={14} />
+        <div className="relative -mt-8 flex flex-1 flex-col px-4 pb-4">
+          {mod.iconUrl ? (
+            <img src={mod.iconUrl} alt="" loading="lazy" className="size-16 rounded-2xl border-4 border-[#100d15] bg-void-800 object-cover shadow-xl" />
           ) : (
-            <Download size={14} />
+            <div className="grid size-16 place-items-center rounded-2xl border-4 border-[#100d15] bg-gradient-to-br from-accent-600 to-midnight-800 text-white shadow-xl">
+              <Package size={24} />
+            </div>
           )}
-          {install.isSuccess ? "Installed" : "Install"}
-        </Button>
-      </div>
 
-      {install.isError && <p className="text-xs text-red-400">{String(install.error)}</p>}
-    </article>
+          <div className="mt-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate font-display text-base font-bold text-white">{mod.name}</h3>
+              <p className="mt-0.5 truncate text-[11px] text-ink-500">by {mod.author || "unknown"}</p>
+            </div>
+            <ArrowUpRight size={16} className="shrink-0 text-ink-500 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent-300" />
+          </div>
+
+          <p className="mt-3 line-clamp-2 text-xs leading-5 text-ink-300">{mod.summary}</p>
+
+          <div className="mt-auto flex items-center justify-between pt-4">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-ink-500">
+              <Download size={12} /> {compact.format(mod.downloads)}
+            </div>
+            <div className="flex gap-1.5">
+              {mod.categories.slice(0, 2).map((category) => (
+                <span key={category} className="max-w-24 truncate rounded-md border border-white/6 bg-white/[0.035] px-2 py-1 text-[9px] font-semibold text-ink-300">
+                  {category}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </button>
+    </motion.article>
   );
 }

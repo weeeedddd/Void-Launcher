@@ -32,7 +32,7 @@ sequenceDiagram
 1. **Azure app registration** — [portal.azure.com](https://portal.azure.com) → *App registrations* → *New*:
    - Supported account types: **"Personal Microsoft accounts only"**
    - *Authentication* → enable **"Allow public client flows"** (this is what makes the device-code grant work; no client secret needed — the launcher is a public client)
-   - Copy the **Application (client) ID** into `CLIENT_ID` in `microsoft.rs`
+   - Configure the **Application (client) ID** as `CLIENT_ID` in `src-tauri/src/auth/microsoft.rs`. The ID is a public application identifier (not a client secret) and ships with the desktop app; users only see the Microsoft sign-in button.
 2. **Mojang approval** — the final `login_with_xbox` call only works for client IDs Mojang has approved. Apply via the official form: <https://aka.ms/mce-reviewappid>. Until approval you'll get **HTTP 403** at step 4 (the launcher shows a matching error message). Steps 1–3 can be developed and tested before approval.
 
 ## The five steps

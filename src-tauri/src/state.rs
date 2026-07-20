@@ -1,18 +1,25 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::auth::MinecraftSession;
+use crate::error::LauncherError;
 
 /// Optional launcher-wide settings, read from `<data_dir>/settings.json`.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// CurseForge Core API key (alternative to the CURSEFORGE_API_KEY env var).
     pub curseforge_api_key: Option<String>,
     /// Fallback Java executable when an instance has no override.
     pub default_java_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsStatus {
+    pub curseforge_configured: bool,
 }
 
 /// Shared state, managed by Tauri and injected into commands via
@@ -74,4 +81,30 @@ impl AppState {
             .filter(|key| !key.is_empty())
             .or_else(|| self.settings().curseforge_api_key)
     }
+}
+
+#[tauri::command]
+pub fn get_settings_status(state: tauri::State<'_, AppState>) -> SettingsStatus {
+    SettingsStatus {
+        curseforge_configured: state.curseforge_api_key().is_some(),
+    }
+}
+
+#[tauri::command]
+pub fn set_curseforge_api_key(
+    state: tauri::State<'_, AppState>,
+    api_key: Option<String>,
+) -> Result<SettingsStatus, LauncherError> {
+    let mut settings = state.settings();
+    settings.curseforge_api_key = api_key
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty());
+
+    std::fs::create_dir_all(&state.data_dir)?;
+    let settings_json = serde_json::to_string_pretty(&settings)?;
+    std::fs::write(state.data_dir.join("settings.json"), settings_json)?;
+
+    Ok(SettingsStatus {
+        curseforge_configured: state.curseforge_api_key().is_some(),
+    })
 }

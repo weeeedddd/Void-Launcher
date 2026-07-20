@@ -14,10 +14,12 @@
 //! network or filesystem access of its own.
 
 pub mod auth;
+pub mod diagnostics;
 pub mod error;
 pub mod instance;
 pub mod launch;
 pub mod modplatform;
+pub mod music;
 pub mod state;
 pub mod system;
 
@@ -31,8 +33,10 @@ pub fn run() {
         // running), it forwards the argv here and exits — we relay any deep
         // links to the UI and refocus the existing window.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let links: Vec<String> =
-                argv.into_iter().filter(|arg| arg.starts_with("voidlauncher://")).collect();
+            let links: Vec<String> = argv
+                .into_iter()
+                .filter(|arg| arg.starts_with("voidlauncher://"))
+                .collect();
             if !links.is_empty() {
                 let _ = app.emit("deep-link", links);
             }
@@ -53,11 +57,14 @@ pub fn run() {
                 .expect("could not resolve the app data directory");
             std::fs::create_dir_all(data_dir.join("instances"))?;
             std::fs::create_dir_all(data_dir.join("java"))?;
+            std::fs::create_dir_all(data_dir.join("logs"))?;
+            std::fs::create_dir_all(data_dir.join("assets"))?;
+            std::fs::create_dir_all(data_dir.join("cache"))?;
             app.manage(state::AppState::new(data_dir));
 
             // voidlauncher:// links delivered while the app runs (and the
             // cold-start link on macOS). The frontend listens for the
-            // "deep-link" event and routes it (see src/App.tsx).
+            // "deep-link" event and routes it (see src/VoidClientApp.tsx).
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -82,6 +89,11 @@ pub fn run() {
             // auth
             auth::commands::begin_microsoft_login,
             auth::commands::complete_microsoft_login,
+            // Spotify + Google/YouTube OAuth and playback
+            music::connect_music_provider,
+            music::get_music_connection,
+            music::control_music_playback,
+            music::disconnect_music_provider,
             // mod platforms
             modplatform::commands::search_mods,
             modplatform::commands::get_mod_versions,
@@ -98,6 +110,14 @@ pub fn run() {
             system::commands::get_java_status,
             system::commands::ensure_java_for_instance,
             system::commands::optimize_instance,
+            // local settings
+            state::get_settings_status,
+            state::set_curseforge_api_key,
+            // storage and native launcher controls
+            diagnostics::commands::get_storage_report,
+            diagnostics::commands::open_launcher_folder,
+            diagnostics::commands::clear_storage_category,
+            diagnostics::commands::restart_launcher,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Void Launcher");

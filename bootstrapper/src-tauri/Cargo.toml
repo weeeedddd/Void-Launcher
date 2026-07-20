@@ -1,0 +1,30 @@
+[package]
+name = "void-bootstrapper"
+version = "0.1.0"
+description = "Secure one-time installer for Void Launcher"
+edition = "2021"
+
+[lib]
+name = "void_bootstrapper_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "time"] }
+url = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+

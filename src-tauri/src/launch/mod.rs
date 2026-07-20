@@ -27,7 +27,11 @@ use crate::instance::Instance;
 const CLASSPATH_SEP: &str = if cfg!(windows) { ";" } else { ":" };
 
 /// JVM arguments: memory, GC tuning, natives dir, user flags, classpath.
-pub fn build_jvm_args(instance: &Instance, natives_dir: &Path, classpath: &[PathBuf]) -> Vec<String> {
+pub fn build_jvm_args(
+    instance: &Instance,
+    natives_dir: &Path,
+    classpath: &[PathBuf],
+) -> Vec<String> {
     let classpath_joined = classpath
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
@@ -68,14 +72,22 @@ pub fn build_game_args(
     asset_index_id: &str,
 ) -> Vec<String> {
     vec![
-        "--username".into(), session.profile.name.clone(),
-        "--uuid".into(), session.profile.uuid.clone(),
-        "--accessToken".into(), session.access_token.clone(),
-        "--userType".into(), "msa".into(), // Microsoft account
-        "--version".into(), instance.game_version.clone(),
-        "--gameDir".into(), game_dir.to_string_lossy().into_owned(),
-        "--assetsDir".into(), assets_dir.to_string_lossy().into_owned(),
-        "--assetIndex".into(), asset_index_id.into(),
+        "--username".into(),
+        session.profile.name.clone(),
+        "--uuid".into(),
+        session.profile.uuid.clone(),
+        "--accessToken".into(),
+        session.access_token.clone(),
+        "--userType".into(),
+        "msa".into(), // Microsoft account
+        "--version".into(),
+        instance.game_version.clone(),
+        "--gameDir".into(),
+        game_dir.to_string_lossy().into_owned(),
+        "--assetsDir".into(),
+        assets_dir.to_string_lossy().into_owned(),
+        "--assetIndex".into(),
+        asset_index_id.into(),
     ]
 }
 

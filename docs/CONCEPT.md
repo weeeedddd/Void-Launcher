@@ -97,8 +97,8 @@ The nav rail drags (or toggles) between the left and right screen edge with a FL
 ### 3.6 Performance optimizer & Java auto-management — *scaffolded ✅*
 Hardware scan (sysinfo + per-OS GPU queries), Light/Balanced/Strong tiers for heap + JVM flags, Windows GPU preference, and fully automatic Temurin JRE installs isolated under `<data>/java/<major>/` — every change reported in a transparent log. Details: [ADVANCED_FEATURES.md §2–3](ADVANCED_FEATURES.md).
 
-### 3.7 Distribution: installer, website, deep links — *scaffolded ✅*
-Branded NSIS installer (dark-purple wizard art, completion chime hook), landing page with download + `voidlauncher://` share links routed through single-instance forwarding. Details: [DISTRIBUTION.md](DISTRIBUTION.md).
+### 3.7 Distribution: Bootstrapper, client, website, deep links — *scaffolded ✅*
+The one-time Bootstrapper and daily-use Client are separate Tauri applications. The Bootstrapper verifies the exact release asset and checksum, creates shortcuts, registers `voidlauncher://` and starts the client; the client bundle contains no installer stages. Details: [DISTRIBUTION.md](DISTRIBUTION.md).
 
 ---
 

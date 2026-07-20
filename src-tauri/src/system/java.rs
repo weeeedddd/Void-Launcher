@@ -34,7 +34,9 @@ use crate::error::LauncherError;
 /// | 1.17 – 1.20.4        | 17   |
 /// | 1.16.5 and older     | 8    |
 pub fn required_java_major(game_version: &str) -> u32 {
-    let mut parts = game_version.split('.').map(|part| part.parse::<u32>().unwrap_or(0));
+    let mut parts = game_version
+        .split('.')
+        .map(|part| part.parse::<u32>().unwrap_or(0));
     let _major = parts.next().unwrap_or(1); // the leading "1"
     let minor = parts.next().unwrap_or(0);
     let patch = parts.next().unwrap_or(0);
@@ -83,7 +85,11 @@ pub struct JavaRuntime {
 }
 
 fn java_binary_name() -> &'static str {
-    if cfg!(windows) { "java.exe" } else { "java" }
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
 }
 
 /// Finds `bin/java` inside `<java_root>/<major>/`, accounting for the
@@ -155,7 +161,11 @@ fn adoptium_os() -> &'static str {
 }
 
 fn adoptium_arch() -> &'static str {
-    if cfg!(target_arch = "aarch64") { "aarch64" } else { "x64" }
+    if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x64"
+    }
 }
 
 /// Returns a ready-to-use Java runtime for `major`, downloading and
@@ -188,8 +198,13 @@ pub async fn ensure_java<F: Fn(JavaProgress)>(
         adoptium_os(),
         adoptium_arch()
     );
-    let assets: Vec<AdoptiumAsset> =
-        http.get(&url).send().await?.error_for_status()?.json().await?;
+    let assets: Vec<AdoptiumAsset> = http
+        .get(&url)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
     let asset = assets.into_iter().next().ok_or_else(|| {
         LauncherError::NotFound(format!(
             "Adoptium offers no Java {major} JRE for {}/{}",
@@ -201,8 +216,14 @@ pub async fn ensure_java<F: Fn(JavaProgress)>(
     // 2) Stream the archive to disk, hashing on the fly.
     std::fs::create_dir_all(java_root)?;
     let archive_path = java_root.join(&asset.binary.package.name);
-    let mut response = http.get(&asset.binary.package.link).send().await?.error_for_status()?;
-    let total_bytes = response.content_length().unwrap_or(asset.binary.package.size);
+    let mut response = http
+        .get(&asset.binary.package.link)
+        .send()
+        .await?
+        .error_for_status()?;
+    let total_bytes = response
+        .content_length()
+        .unwrap_or(asset.binary.package.size);
 
     let mut file = tokio::fs::File::create(&archive_path).await?;
     let mut hasher = Sha256::new();
@@ -230,7 +251,11 @@ pub async fn ensure_java<F: Fn(JavaProgress)>(
         downloaded_bytes: downloaded,
         total_bytes,
     });
-    let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let actual: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     if !actual.eq_ignore_ascii_case(&asset.binary.package.checksum) {
         let _ = std::fs::remove_file(&archive_path);
         return Err(LauncherError::InvalidData(format!(
@@ -277,7 +302,10 @@ pub async fn ensure_java<F: Fn(JavaProgress)>(
 fn extract_archive(archive: &Path, dest: &Path) -> Result<(), LauncherError> {
     std::fs::create_dir_all(dest)?;
     let file = std::fs::File::open(archive)?;
-    let name = archive.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let name = archive
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
 
     if name.ends_with(".zip") {
         zip::ZipArchive::new(file)

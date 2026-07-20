@@ -28,3 +28,7 @@ src-tauri/gen/
 # Nested Tauri generated/build output (bootstrapper workspace)
 bootstrapper/src-tauri/gen/
 bootstrapper/src-tauri/target/
+
+# GitHub Pages build outputs (assembled in CI)
+dist-workflow/
+_site/

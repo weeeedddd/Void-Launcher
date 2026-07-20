@@ -1,5 +1,11 @@
 name: Deploy GitHub Pages
 
+# Publishes a usable public site:
+#   /            → website/index.html  (landing page + launcher download)
+#   /showcase/   → npm run build:workflow output (the static design board)
+#
+# ONE-TIME SETUP (repo owner): Settings → Pages → Source: "GitHub Actions".
+
 on:
   push:
     branches: ["claude/minecraft-launcher-dev-3mp1k6"]
@@ -29,10 +35,23 @@ jobs:
         run: npm ci
       - name: Build static workflow showcase
         run: npm run build:workflow
+      - name: Assemble Pages site (landing page at /, showcase at /showcase/)
+        run: |
+          rm -rf _site
+          mkdir -p _site/showcase
+          # Landing page (with the launcher download) at the site root.
+          cp -R website/. _site/
+          # Design board under /showcase/ (relative asset base → works nested).
+          cp -R dist-workflow/. _site/showcase/
+          if [ -f _site/showcase/workflow.html ]; then
+            mv _site/showcase/workflow.html _site/showcase/index.html
+          fi
+          # Serve files as-is (no Jekyll processing).
+          touch _site/.nojekyll
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist-workflow
+          path: ./_site
 
   deploy:
     needs: build

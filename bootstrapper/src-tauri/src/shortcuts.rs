@@ -12,25 +12,73 @@ if ([String]::IsNullOrWhiteSpace($target) -or [String]::IsNullOrWhiteSpace($work
 if (-not [IO.File]::Exists($target)) {
     throw 'The installed client does not exist.'
 }
-$desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
 $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
-if ([String]::IsNullOrWhiteSpace($desktop) -or [String]::IsNullOrWhiteSpace($programs)) {
-    throw 'Windows shortcut folders are unavailable.'
+if ([String]::IsNullOrWhiteSpace($programs)) {
+    $appData = [Environment]::GetEnvironmentVariable('APPDATA', 'Process')
+    if (-not [String]::IsNullOrWhiteSpace($appData)) {
+        $programs = [IO.Path]::Combine($appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+    }
+}
+if ([String]::IsNullOrWhiteSpace($programs)) {
+    throw 'The Windows Start Menu folder is unavailable.'
 }
 $startMenuDirectory = [IO.Path]::Combine($programs, 'Void Launcher')
 [IO.Directory]::CreateDirectory($startMenuDirectory) | Out-Null
-$shortcutPaths = @(
-    [IO.Path]::Combine($desktop, 'Void Launcher.lnk'),
-    [IO.Path]::Combine($startMenuDirectory, 'Void Launcher.lnk')
-)
+
+function Resolve-DesktopDirectory {
+    $candidates = [Collections.Generic.List[string]]::new()
+    $specialFolder = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+    if (-not [String]::IsNullOrWhiteSpace($specialFolder)) {
+        $candidates.Add($specialFolder)
+    }
+
+    try {
+        $registryDesktop = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' -Name Desktop -ErrorAction Stop).Desktop
+        if (-not [String]::IsNullOrWhiteSpace($registryDesktop)) {
+            $candidates.Add([Environment]::ExpandEnvironmentVariables($registryDesktop))
+        }
+    } catch {}
+
+    foreach ($oneDriveVariable in @('OneDrive', 'OneDriveConsumer')) {
+        $oneDrive = [Environment]::GetEnvironmentVariable($oneDriveVariable, 'Process')
+        if (-not [String]::IsNullOrWhiteSpace($oneDrive)) {
+            $candidates.Add([IO.Path]::Combine($oneDrive, 'Desktop'))
+        }
+    }
+
+    $userProfile = [Environment]::GetEnvironmentVariable('USERPROFILE', 'Process')
+    if (-not [String]::IsNullOrWhiteSpace($userProfile)) {
+        $candidates.Add([IO.Path]::Combine($userProfile, 'Desktop'))
+    }
+
+    foreach ($candidate in $candidates) {
+        if (-not [String]::IsNullOrWhiteSpace($candidate) -and [IO.Directory]::Exists($candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+$desktop = Resolve-DesktopDirectory
 $shell = New-Object -ComObject WScript.Shell
-foreach ($shortcutPath in $shortcutPaths) {
+function Save-Shortcut([string]$shortcutPath) {
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $target
     $shortcut.WorkingDirectory = $workingDirectory
     $shortcut.IconLocation = $target + ',0'
     $shortcut.Description = 'Launch Void Launcher'
     $shortcut.Save()
+}
+
+# The Start Menu entry is the reliable, required launcher entry point.
+Save-Shortcut ([IO.Path]::Combine($startMenuDirectory, 'Void Launcher.lnk'))
+
+# Desktop folders can be redirected, removed or managed by OneDrive. A missing
+# or unwritable Desktop must not make an otherwise valid client install fail.
+if (-not [String]::IsNullOrWhiteSpace($desktop)) {
+    try {
+        Save-Shortcut ([IO.Path]::Combine($desktop, 'Void Launcher.lnk'))
+    } catch {}
 }
 $protocolRoot = 'HKCU:\Software\Classes\voidlauncher'
 $protocolCommand = $protocolRoot + '\shell\open\command'

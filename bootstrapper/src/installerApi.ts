@@ -13,6 +13,7 @@ export interface IInstallerProgress {
 export interface IInstallClientResult {
   installedExecutable: string;
   version: string;
+  shortcutWarning?: string | null;
 }
 
 interface IRawInstallerProgress {

@@ -312,6 +312,7 @@ export function VoidInstallerApp() {
         setInstallResult({
           installedExecutable: `${normalizedPath}\\Void Launcher.exe — preview only, no file written`,
           version: "Preview 0.1.0",
+          shortcutWarning: null,
         });
       }
 
@@ -825,16 +826,23 @@ function DoneStage({ nativeRuntime, result }: IDoneStageProps) {
           : "No executable or directory was created. Use the native Bootstrapper to perform a real installation."}
       </p>
       {result ? (
-        <dl className={styles.resultCard}>
-          <div className={styles.resultRow}>
-            <dt className={styles.resultLabel}>Client version</dt>
-            <dd className={styles.resultValue}>{result.version}</dd>
-          </div>
-          <div className={styles.resultRow}>
-            <dt className={styles.resultLabel}>Executable</dt>
-            <dd className={styles.resultValue}>{result.installedExecutable}</dd>
-          </div>
-        </dl>
+        <>
+          <dl className={styles.resultCard}>
+            <div className={styles.resultRow}>
+              <dt className={styles.resultLabel}>Client version</dt>
+              <dd className={styles.resultValue}>{result.version}</dd>
+            </div>
+            <div className={styles.resultRow}>
+              <dt className={styles.resultLabel}>Executable</dt>
+              <dd className={styles.resultValue}>{result.installedExecutable}</dd>
+            </div>
+          </dl>
+          {result.shortcutWarning ? (
+            <p className="mt-4 max-w-2xl text-center text-xs leading-5 text-[#f4bf75]" role="status">
+              {result.shortcutWarning}
+            </p>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

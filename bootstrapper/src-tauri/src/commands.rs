@@ -16,6 +16,7 @@ use tauri::{AppHandle, State};
 pub struct InstallResult {
     pub installed_executable: String,
     pub version: String,
+    pub shortcut_warning: Option<String>,
 }
 
 #[tauri::command]
@@ -43,15 +44,7 @@ pub async fn install_client(
     let (installed_executable, version) = install_release(&app, &installation_directory).await?;
     verify_installed_executable(&installed_executable)?;
 
-    emit_progress(
-        &app,
-        0,
-        0,
-        97,
-        "Creating Desktop and Start Menu shortcuts...",
-    );
     let trusted_executable = std::fs::canonicalize(&installed_executable)?;
-    create_shortcuts(&trusted_executable)?;
 
     {
         let mut installed = state
@@ -61,10 +54,27 @@ pub async fn install_client(
         *installed = Some(trusted_executable);
     }
 
-    emit_progress(&app, 0, 0, 100, "Void Launcher is ready.");
+    emit_progress(
+        &app,
+        0,
+        0,
+        97,
+        "Creating Desktop and Start Menu shortcuts...",
+    );
+    let shortcut_warning = create_shortcuts(&installed_executable)
+        .err()
+        .map(|_| "The client was installed, but Windows did not allow shortcut creation. You can launch it directly from the installation folder.".to_owned());
+
+    let final_status = if shortcut_warning.is_some() {
+        "Void Launcher is ready. Shortcut creation was skipped."
+    } else {
+        "Void Launcher is ready."
+    };
+    emit_progress(&app, 0, 0, 100, final_status);
     Ok(InstallResult {
         installed_executable: installed_executable.to_string_lossy().into_owned(),
         version,
+        shortcut_warning,
     })
 }
 

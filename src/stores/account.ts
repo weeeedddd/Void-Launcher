@@ -23,6 +23,8 @@ interface AccountState {
   codeCopied: boolean;
   copyError: string | null;
   error: string | null;
+  restoring: boolean;
+  restoreSession: () => Promise<void>;
   login: () => Promise<void>;
   activateAccount: (accountId: string) => void;
   copyDeviceCode: () => Promise<void>;
@@ -62,6 +64,29 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   codeCopied: false,
   copyError: null,
   error: null,
+  restoring: false,
+
+  restoreSession: async () => {
+    if (get().profile || get().restoring) return;
+    set({ restoring: true, error: null });
+    try {
+      const profile = await api.restoreMicrosoftSession();
+      if (!profile) {
+        set({ restoring: false });
+        return;
+      }
+      const account: LauncherAccount = {
+        id: `msa-${profile.uuid}`,
+        username: profile.name,
+        uuid: profile.uuid,
+        isActive: true,
+        kind: "microsoft",
+      };
+      set({ mode: "microsoft", profile, accounts: [account], restoring: false });
+    } catch (error) {
+      set({ restoring: false, error: String(error) });
+    }
+  },
 
   login: async () => {
     set({ error: null, copyError: null, codeCopied: false });

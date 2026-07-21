@@ -1,6 +1,6 @@
 //! Instance commands: the "custom modpack builder" backend.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Component, Path};
 use tauri::State;
 use uuid::Uuid;
@@ -169,6 +169,86 @@ pub async fn install_mod(
     Ok(installed)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledShader {
+    pub platform: Platform,
+    pub project_id: String,
+    pub version_id: String,
+    pub name: String,
+    pub file_name: String,
+}
+
+/// Downloads the newest compatible shader archive into the selected
+/// instance's `shaderpacks` directory. Shader versions are not filtered by a
+/// Java mod loader because platforms classify them with Iris/OptiFine tags.
+#[tauri::command]
+pub async fn install_shader(
+    state: State<'_, AppState>,
+    instance_id: Uuid,
+    platform: Platform,
+    project_id: String,
+) -> Result<InstalledShader, LauncherError> {
+    let root = state.instances_dir();
+    let instance = Instance::find(&root, instance_id)?;
+    let versions = match platform {
+        Platform::Modrinth => {
+            modrinth::versions(&state.http, &project_id, Some(&instance.game_version), None).await?
+        }
+        Platform::Curseforge => {
+            let api_key = require_curseforge_key(&state)?;
+            curseforge::files(
+                &state.http,
+                &api_key,
+                &project_id,
+                Some(&instance.game_version),
+                None,
+            )
+            .await?
+        }
+    };
+    let version = versions.into_iter().next().ok_or_else(|| {
+        LauncherError::NotFound(format!(
+            "No shader version supports Minecraft {}.",
+            instance.game_version
+        ))
+    })?;
+    let url = version.download_url.clone().ok_or_else(|| {
+        LauncherError::Platform(
+            "The author disabled third-party downloads. Open the project page to install it manually."
+                .into(),
+        )
+    })?;
+    validate_shader_file_name(&version.file_name)?;
+    let bytes = state
+        .http
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    if let Some(expected) = &version.sha1 {
+        let actual = sha1_smol::Sha1::from(&bytes).digest().to_string();
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(LauncherError::InvalidData(format!(
+                "Download corrupted: SHA-1 mismatch for {}.",
+                version.file_name
+            )));
+        }
+    }
+    let shaderpacks_dir = instance.dir(&root).join("shaderpacks");
+    tokio::fs::create_dir_all(&shaderpacks_dir).await?;
+    tokio::fs::write(shaderpacks_dir.join(&version.file_name), bytes).await?;
+    Ok(InstalledShader {
+        platform,
+        project_id,
+        version_id: version.id,
+        name: version.name,
+        file_name: version.file_name,
+    })
+}
+
 /// Toggle a mod without deleting it. Disabled mods keep their file but get
 /// a ".disabled" suffix — every loader (Fabric/Forge/NeoForge/Quilt) only
 /// loads `*.jar`, so the rename cleanly deactivates the mod.
@@ -233,9 +313,29 @@ fn validate_mod_file_name(file_name: &str) -> Result<(), LauncherError> {
     Ok(())
 }
 
+fn validate_shader_file_name(file_name: &str) -> Result<(), LauncherError> {
+    if file_name.is_empty()
+        || file_name.contains('/')
+        || file_name.contains('\\')
+        || file_name.contains('\0')
+        || !file_name.to_ascii_lowercase().ends_with(".zip")
+    {
+        return Err(LauncherError::InvalidData(
+            "The mod platform returned an unsafe shader archive name.".into(),
+        ));
+    }
+    let mut components = Path::new(file_name).components();
+    if !matches!(components.next(), Some(Component::Normal(_))) || components.next().is_some() {
+        return Err(LauncherError::InvalidData(
+            "The mod platform returned an unsafe shader archive name.".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_mod_file_name;
+    use super::{validate_mod_file_name, validate_shader_file_name};
 
     #[test]
     fn accepts_single_component_jar_names() {
@@ -258,5 +358,12 @@ mod tests {
                 "{file_name} should be rejected"
             );
         }
+    }
+
+    #[test]
+    fn shader_archives_must_be_safe_zip_files() {
+        assert!(validate_shader_file_name("Complementary.zip").is_ok());
+        assert!(validate_shader_file_name("../shader.zip").is_err());
+        assert!(validate_shader_file_name("shader.jar").is_err());
     }
 }

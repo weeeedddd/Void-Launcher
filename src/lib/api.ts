@@ -3,7 +3,9 @@ import type {
   CreateInstanceSpec,
   DeviceCodeInfo,
   HardwareReport,
+  GameVideoSettings,
   InstalledMod,
+  InstalledShader,
   Instance,
   InstanceSettings,
   JavaRuntimeInfo,
@@ -47,6 +49,8 @@ export const api = {
   completeMicrosoftLogin: (deviceCode: string) =>
     invoke<MinecraftProfile>("complete_microsoft_login", { deviceCode }),
 
+  restoreMicrosoftSession: () => invoke<MinecraftProfile | null>("restore_microsoft_session"),
+
   // ── Spotify + Google/YouTube ───────────────────────────────────────────
   connectMusicProvider: (provider: MusicProvider) =>
     invoke<MusicConnectionState>("connect_music_provider", { provider }),
@@ -87,6 +91,9 @@ export const api = {
   installMod: (instanceId: string, platform: Platform, projectId: string) =>
     invoke<InstalledMod>("install_mod", { instanceId, platform, projectId }),
 
+  installShader: (instanceId: string, platform: Platform, projectId: string) =>
+    invoke<InstalledShader>("install_shader", { instanceId, platform, projectId }),
+
   /** Enable/disable an installed mod (renames the jar to `*.jar.disabled`). */
   setModEnabled: (instanceId: string, fileName: string, enabled: boolean) =>
     invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
@@ -113,6 +120,9 @@ export const api = {
   optimizeInstance: (instanceId: string, tier: OptimizationTier) =>
     invoke<OptimizationOutcome>("optimize_instance", { instanceId, tier }),
 
+  applyGameVideoSettings: (instanceId: string, settings: GameVideoSettings) =>
+    invoke<GameVideoSettings>("apply_game_video_settings", { instanceId, settings }),
+
   // ── Local settings ────────────────────────────────────────────────────────
   /** Reports only whether a key exists; the secret never comes back to React. */
   getSettingsStatus: () => invoke<SettingsStatus>("get_settings_status"),
@@ -120,6 +130,9 @@ export const api = {
   /** Saves a new key locally, or removes it when null is supplied. */
   setCurseforgeApiKey: (apiKey: string | null) =>
     invoke<SettingsStatus>("set_curseforge_api_key", { apiKey }),
+
+  setAuthPersistence: (persistence: SettingsStatus["authPersistence"]) =>
+    invoke<SettingsStatus>("set_auth_persistence", { persistence }),
 
   // ── Native storage and launcher controls ────────────────────────────────
   getStorageReport: () => invoke<StorageReport>("get_storage_report"),
@@ -133,9 +146,6 @@ export const api = {
   restartLauncher: () => invoke<void>("restart_launcher"),
 
   getDiscordRpcStatus: () => invoke<DiscordRpcStatus>("get_discord_rpc_status"),
-
-  setDiscordClientId: (applicationId: string | null) =>
-    invoke<DiscordRpcStatus>("set_discord_client_id", { applicationId }),
 
   updateDiscordRpc: (request: DiscordRpcUpdate) =>
     invoke<DiscordRpcStatus>("update_discord_rpc", { request }),

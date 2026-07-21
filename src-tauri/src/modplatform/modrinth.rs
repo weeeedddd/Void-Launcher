@@ -7,8 +7,8 @@
 use serde::Deserialize;
 
 use super::{
-    ModLoader, ModSummary, ModVersionInfo, Platform, ProjectType, SearchParams,
-    SearchResultPage, SearchSort,
+    ModLoader, ModSummary, ModVersionInfo, Platform, ProjectType, SearchParams, SearchResultPage,
+    SearchSort,
 };
 use crate::error::LauncherError;
 

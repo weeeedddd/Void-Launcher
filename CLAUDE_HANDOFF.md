@@ -19,6 +19,7 @@ Bitte diesen Quellstand als aktuellen Void-Launcher-Stand übernehmen und auf Gi
 - CPU/RAM-Telemetrie reagiert auf den Launch-Hook mit einem sichtbaren Boot-Surge und Framer-Motion-Wertanimationen.
 - Native Discord RPC bleibt über die Rust-IPC-Bridge angebunden. Es wird nur eine öffentliche Discord Application ID benötigt; keine Client Secret in die UI eintragen.
 - Modrinth- und CurseForge-Suche bleibt paginiert und nach Mod, Modpack und Shader filterbar.
+- CurseForge lehnt bcrypt-Passworthashes jetzt vor dem HTTP-Aufruf ab. HTTP 401/403 wird als verständlicher API-Key-Fehler dargestellt, und der aktive Mod-Hub besitzt ein sicheres Panel zum Ersetzen oder Entfernen des Core API Keys.
 
 ## Wichtige Dateien
 
@@ -43,7 +44,7 @@ npm.cmd run build:all
 cargo test --offline --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-Rust-Ergebnis: 10 Tests bestanden.
+Rust-Ergebnis: 12 Tests bestanden.
 
 ## Release
 

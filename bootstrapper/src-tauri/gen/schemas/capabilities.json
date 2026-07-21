@@ -1,0 +1,1 @@
+{"bootstrapper-main":{"identifier":"bootstrapper-main","description":"Least-privilege capabilities for the standalone Void Bootstrapper window.","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-close","core:window:allow-minimize","core:window:allow-start-dragging","dialog:allow-open"]}}

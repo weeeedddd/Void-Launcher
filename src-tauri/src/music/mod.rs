@@ -19,6 +19,7 @@ use tokio::net::TcpListener;
 use url::Url;
 
 use crate::error::LauncherError;
+use crate::secure_store::{protect_for_current_user, unprotect_for_current_user};
 use crate::state::AppState;
 
 const SPOTIFY_CLIENT_ID: &str = "4a455df6caa84500841a4399ae409b78";
@@ -587,98 +588,6 @@ fn load_session(
     })?;
     let json = unprotect_for_current_user(&encrypted)?;
     Ok(serde_json::from_slice(&json)?)
-}
-
-#[cfg(target_os = "windows")]
-fn protect_for_current_user(input: &[u8]) -> Result<Vec<u8>, LauncherError> {
-    use std::ptr::{null, null_mut};
-    use windows_sys::Win32::Foundation::LocalFree;
-    use windows_sys::Win32::Security::Cryptography::{
-        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
-
-    let input_blob = CRYPT_INTEGER_BLOB {
-        cbData: input.len() as u32,
-        pbData: input.as_ptr() as *mut u8,
-    };
-    let mut output_blob = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: null_mut(),
-    };
-    let success = unsafe {
-        CryptProtectData(
-            &input_blob,
-            null(),
-            null(),
-            null(),
-            null(),
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output_blob,
-        )
-    };
-    if success == 0 {
-        return Err(LauncherError::Internal(
-            "Windows could not encrypt the OAuth session.".into(),
-        ));
-    }
-    let protected = unsafe {
-        std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize).to_vec()
-    };
-    unsafe { LocalFree(output_blob.pbData.cast()) };
-    Ok(protected)
-}
-
-#[cfg(target_os = "windows")]
-fn unprotect_for_current_user(input: &[u8]) -> Result<Vec<u8>, LauncherError> {
-    use std::ptr::{null, null_mut};
-    use windows_sys::Win32::Foundation::LocalFree;
-    use windows_sys::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
-
-    let input_blob = CRYPT_INTEGER_BLOB {
-        cbData: input.len() as u32,
-        pbData: input.as_ptr() as *mut u8,
-    };
-    let mut output_blob = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: null_mut(),
-    };
-    let success = unsafe {
-        CryptUnprotectData(
-            &input_blob,
-            null_mut(),
-            null(),
-            null(),
-            null(),
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output_blob,
-        )
-    };
-    if success == 0 {
-        return Err(LauncherError::Auth(
-            "The saved music session could not be decrypted for this Windows user.".into(),
-        ));
-    }
-    let plain = unsafe {
-        std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize).to_vec()
-    };
-    unsafe { LocalFree(output_blob.pbData.cast()) };
-    Ok(plain)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn protect_for_current_user(_input: &[u8]) -> Result<Vec<u8>, LauncherError> {
-    Err(LauncherError::NotImplemented(
-        "Secure music token storage is currently implemented for Windows only.".into(),
-    ))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn unprotect_for_current_user(_input: &[u8]) -> Result<Vec<u8>, LauncherError> {
-    Err(LauncherError::NotImplemented(
-        "Secure music token storage is currently implemented for Windows only.".into(),
-    ))
 }
 
 #[cfg(test)]

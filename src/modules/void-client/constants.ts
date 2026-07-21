@@ -15,19 +15,20 @@ export interface ISettingsNavigationItem {
 }
 
 export const NAVIGATION_ITEMS: readonly INavigationItem[] = [
-  { id: "dashboard", label: "Command Center", eyebrow: "Overview", icon: "dashboard" },
-  { id: "deployments", label: "Deployment Vault", eyebrow: "Profiles", icon: "vault" },
-  { id: "mods", label: "Shadow Archive", eyebrow: "Mod Hub", icon: "mods" },
-  { id: "telemetry", label: "Battle Metrics", eyebrow: "Telemetry", icon: "telemetry" },
-  { id: "settings", label: "Tuning Matrix", eyebrow: "Cid Kagenou", icon: "settings" },
-  { id: "chronicle", label: "The Chronicle", eyebrow: "Cult of Diablos", icon: "chronicle" },
+  { id: "dashboard", label: "Home", eyebrow: "Overview", icon: "dashboard" },
+  { id: "deployments", label: "Instances", eyebrow: "Minecraft", icon: "vault" },
+  { id: "mods", label: "Shadow Archive", eyebrow: "Content", icon: "mods" },
+  { id: "telemetry", label: "Performance", eyebrow: "System", icon: "telemetry" },
+  { id: "settings", label: "Settings", eyebrow: "Launcher", icon: "settings" },
+  { id: "chronicle", label: "News", eyebrow: "Updates", icon: "chronicle" },
+  { id: "systems", label: "Shadow Systems", eyebrow: "AAA Suite", icon: "spark" },
 ] as const;
 
 export const SETTINGS_NAVIGATION: readonly ISettingsNavigationItem[] = [
   { id: "general", label: "General", description: "Client behavior and cache" },
-  { id: "launch", label: "Launch", description: "Game and Java doctrine" },
-  { id: "mission", label: "Mission Control", description: "Notifications and recovery" },
-  { id: "rpc", label: "RPC", description: "Discord presence protocol" },
+  { id: "launch", label: "Game & Java", description: "Runtime and display" },
+  { id: "mission", label: "Notifications", description: "Alerts and recovery" },
+  { id: "rpc", label: "Discord", description: "Rich Presence" },
   { id: "privacy", label: "Privacy", description: "Consent and data boundaries" },
 ] as const;
 
@@ -96,7 +97,7 @@ export const MOD_CATALOG: readonly IModCatalogItem[] = [
     updatedAt: "2026-05-30", downloadCount: 7_200_000, accent: "blue", downloads: "7.2M",
   },
   {
-    id: "enigmatica-void", name: "Enigmatica: Void Protocol", creator: "Enigmatica",
+    id: "enigmatica-void", name: "Enigmatica: Void", creator: "Enigmatica",
     description: "Expert progression with deep crafting chains and isolated world states.", version: "v0.9.9",
     gameVersion: "1.21.1", source: "modrinth", kind: "modpack", category: "Expert", loader: "NeoForge",
     imageUrl: "https://images.unsplash.com/photo-1483347756197-71ef80e95f73?auto=format&fit=crop&w=960&q=82",
@@ -246,31 +247,31 @@ export const MOD_CATALOG: readonly IModCatalogItem[] = [
 
 export const NEWS_ENTRIES: readonly INewsEntry[] = [
   {
-    id: "awakening-protocol",
+    id: "awakening-update",
     category: "Client Update",
-    title: "The Awakening Protocol is now active",
-    summary: "A new startup sequence, hardened account switching and native runtime telemetry enter the Void.",
+    title: "The Awakening update is now available",
+    summary: "A refined startup sequence, secure account switching and clearer performance reporting arrive in Void Launcher.",
     date: "20 July 2026",
     readTime: "4 min read",
     chapter: "Chronicle 01",
     body: [
-      "The launcher now opens with a deliberate awakening sequence that prepares audio, visual layers and local runtime state before the command center mounts.",
-      "Account switching has been rebuilt around verified Microsoft identities. Authentication tokens remain inside the native vault and never cross into the React interface.",
-      "The new telemetry surface uses deterministic sampling to keep motion stable under React Strict Mode while still feeling alive at gaming refresh rates.",
+      "The launcher now opens with a focused startup sequence that prepares audio, visual layers and local runtime state before the dashboard appears.",
+      "Account switching has been rebuilt around verified Microsoft identities. Authentication tokens remain inside the encrypted native store and never cross into the React interface.",
+      "The performance view uses stable sampling to keep motion smooth under React Strict Mode while still feeling responsive at gaming refresh rates.",
     ],
   },
   {
     id: "native-engine",
     category: "Engineering",
     title: "Native Engine: forged beneath the interface",
-    summary: "Java selection, Windows process isolation and verified game files now share one launch doctrine.",
+    summary: "Java selection, Windows process isolation and verified game files now share one reliable launch flow.",
     date: "18 July 2026",
     readTime: "6 min read",
     chapter: "Chronicle 02",
     body: [
       "The native layer resolves the correct Java runtime for each Minecraft generation and launches through the windowless Java executable on Windows.",
       "Game metadata, libraries, assets and loader artifacts are validated before execution. Authentication material remains on the Rust side and is never exposed to the React WebView.",
-      "Every launch failure now returns a readable error to the command center, replacing silent black screens with actionable feedback.",
+      "Every launch failure now returns a readable error to the live console, replacing silent black screens with actionable feedback.",
     ],
   },
   {
@@ -296,11 +297,11 @@ export const NEWS_ENTRIES: readonly INewsEntry[] = [
     readTime: "5 min read",
     chapter: "Chronicle 04",
     body: [
-      "Telemetry relays detected synchronized latency drops across several community routes shortly before midnight.",
+      "Network checks detected synchronized latency drops across several community routes shortly before midnight.",
       "The event has been catalogued as a harmless seasonal teaser, though the repeating violet signature remains under observation.",
       "More details will surface through the Chronicle as the deployment window moves closer.",
     ],
   },
 ] as const;
 
-export const DEFAULT_JVM_ARGUMENTS = "-Xms2G -Xmx12G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=50 -XX:+UseStringDeduplication";
+export const DEFAULT_JVM_ARGUMENTS = "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=50 -XX:+UseStringDeduplication";

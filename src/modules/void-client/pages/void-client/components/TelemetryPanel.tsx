@@ -28,8 +28,8 @@ export const TelemetryPanel = memo(function TelemetryPanel({ snapshot, expanded 
       <div className="pointer-events-none absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
       <header className="relative flex items-start justify-between gap-4">
         <div>
-          <p className={voidClientStyles.sectionKicker}>Real-time telemetry</p>
-          <h2 id={`telemetry-title-${reactId}`} className="font-display mt-1 text-lg font-black">Performance Matrix</h2>
+          <p className={voidClientStyles.sectionKicker}>System activity</p>
+          <h2 id={`telemetry-title-${reactId}`} className="font-display mt-1 text-lg font-black">CPU & Memory</h2>
         </div>
         <div className={`flex items-center gap-2 text-[9px] font-black tracking-[0.12em] uppercase ${snapshot.launchLoadActive ? "text-[#d8b4fe]" : ping.text}`}>
           <motion.span
@@ -125,9 +125,9 @@ export function TelemetryView({ snapshot }: { snapshot: ITelemetrySnapshot }) {
   return (
     <div className={voidClientStyles.page}>
       <header className="mb-6">
-        <p className={voidClientStyles.sectionKicker}>Battle metrics // live native signal</p>
+        <p className={voidClientStyles.sectionKicker}>System performance</p>
         <h1 className={voidClientStyles.pageTitle}>Performance Monitor</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[#8d8198]">A deterministic live simulation of the system signals the launcher will consume from the native telemetry bridge.</p>
+        <p className="mt-2 max-w-2xl text-sm text-[#8d8198]">A clear view of CPU, memory, frame-rate and connection activity while the client starts.</p>
       </header>
       <TelemetryPanel snapshot={snapshot} expanded />
     </div>

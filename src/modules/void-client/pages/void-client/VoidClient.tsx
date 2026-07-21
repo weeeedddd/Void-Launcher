@@ -1,13 +1,17 @@
-import { lazy, Suspense, useCallback } from "react";
+import { lazy, Suspense, useCallback, useEffect } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { api } from "@/lib/api";
 import { closeCurrentWindow, minimizeCurrentWindow, toggleCurrentWindowMaximized } from "@/lib/windowControls";
 import { useAccountStore } from "@/stores/account";
 import { NAVIGATION_ITEMS } from "../../constants";
 import { ShadowGlyph } from "../../components/ShadowGlyph";
+import { translatedViewLabel } from "../../i18n";
 import { useTelemetry } from "../../hooks/useTelemetry";
 import { useVoidClientStore } from "../../stores/voidClient.store";
 import { AccountDropdown } from "./components/AccountDropdown";
 import { CommandDeck } from "./components/CommandDeck";
+import { LanguageControl } from "./components/LanguageControl";
+import { MissionControl } from "./components/MissionControl";
 import { CrashScreen, VoidRuntimeBoundary } from "../crash-screen";
 import { voidClientStyles } from "./void-client.styles";
 
@@ -17,6 +21,7 @@ const ModHubView = lazy(() => import("./components/ModHubView").then((module) =>
 const TelemetryView = lazy(() => import("./components/TelemetryPanel").then((module) => ({ default: module.TelemetryView })));
 const TuningMatrixView = lazy(() => import("./components/TuningMatrixView").then((module) => ({ default: module.TuningMatrixView })));
 const ChronicleView = lazy(() => import("./components/ChronicleView").then((module) => ({ default: module.ChronicleView })));
+const ShadowSystemsView = lazy(() => import("./components/ShadowSystemsView").then((module) => ({ default: module.ShadowSystemsView })));
 
 export function VoidClient() {
   const activeView = useVoidClientStore((state) => state.activeView);
@@ -64,10 +69,31 @@ export function VoidClient() {
 
 function VoidClientSurface() {
   const activeView = useVoidClientStore((state) => state.activeView);
-  const accountMode = useAccountStore((state) => state.mode);
+  const restoreSession = useAccountStore((state) => state.restoreSession);
+  const language = useVoidClientStore((state) => state.language);
+  const discordRpcEnabled = useVoidClientStore((state) => state.discordRpcEnabled);
+  const hideRpcWhenIdle = useVoidClientStore((state) => state.hideRpcWhenIdle);
+  const rpcLanguage = useVoidClientStore((state) => state.rpcLanguage);
   const snapshot = useTelemetry();
   const reduceMotion = useReducedMotion();
   const activeNavigation = NAVIGATION_ITEMS.find((item) => item.id === activeView);
+
+  useEffect(() => {
+    void restoreSession();
+  }, [restoreSession]);
+
+  useEffect(() => {
+    if (!discordRpcEnabled) return;
+    void api
+      .updateDiscordRpc({
+        enabled: true,
+        hideWhenIdle: hideRpcWhenIdle,
+        language: rpcLanguage,
+        details: "Step Beyond the Ordinary Client",
+        state: "In the Void Launcher",
+      })
+      .catch(() => undefined);
+  }, [discordRpcEnabled, hideRpcWhenIdle, rpcLanguage]);
 
   const minimize = useCallback(minimizeCurrentWindow, []);
   const toggleMaximize = useCallback(toggleCurrentWindowMaximized, []);
@@ -77,13 +103,14 @@ function VoidClientSurface() {
     <div className={voidClientStyles.shell}>
       <AmbientShadowField reducedMotion={Boolean(reduceMotion)} />
       <VoidTitleBar
-        activeSection={activeNavigation?.label ?? "Command Center"}
-        accountMode={accountMode}
+        activeSection={activeNavigation ? translatedViewLabel(language, activeNavigation.id) : translatedViewLabel(language, "dashboard")}
         onMinimize={minimize}
         onMaximize={toggleMaximize}
         onClose={close}
       />
       <CommandDeck />
+      <LanguageControl />
+      <MissionControl />
 
       <main className={voidClientStyles.main}>
         <AnimatePresence mode="wait" initial={false}>
@@ -102,6 +129,7 @@ function VoidClientSurface() {
               {activeView === "telemetry" && <TelemetryView snapshot={snapshot} />}
               {activeView === "settings" && <TuningMatrixView />}
               {activeView === "chronicle" && <ChronicleView />}
+              {activeView === "systems" && <ShadowSystemsView />}
             </Suspense>
           </motion.div>
         </AnimatePresence>
@@ -121,7 +149,7 @@ function ViewLoadingState() {
         >
           <ShadowGlyph name="spark" size={22} />
         </motion.span>
-        <p className="mt-4 text-[9px] font-black tracking-[0.2em] text-[#a98abf] uppercase">Synchronizing Void sector</p>
+        <p className="mt-4 text-[10px] font-semibold tracking-[0.08em] text-[#b8a8c1]">Loading launcher view…</p>
       </div>
     </div>
   );
@@ -129,35 +157,27 @@ function ViewLoadingState() {
 
 interface IVoidTitleBarProps {
   activeSection: string;
-  accountMode: ReturnType<typeof useAccountStore.getState>["mode"];
   onMinimize: () => void;
   onMaximize: () => void;
   onClose: () => void;
 }
 
-function VoidTitleBar({ activeSection, accountMode, onMinimize, onMaximize, onClose }: IVoidTitleBarProps) {
-  const status = accountMode === "microsoft"
-    ? { label: "Microsoft verified", tone: "text-[#4cff9a]", dot: "bg-[#4cff9a]" }
-    : { label: "Identity required", tone: "text-[#a79bad]", dot: "bg-[#655a70]" };
-
+function VoidTitleBar({ activeSection, onMinimize, onMaximize, onClose }: IVoidTitleBarProps) {
   return (
     <header data-tauri-drag-region className={voidClientStyles.titleBar} onDoubleClick={onMaximize}>
       <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[#9d5ce0]/35 bg-[radial-gradient(circle,#351348,#0a0710_74%)] text-[#d8b4fe] shadow-[0_0_26px_rgba(123,44,191,0.26)]">
-          <span className="pointer-events-none absolute inset-x-1 top-1/2 h-px -rotate-45 bg-[#c796ff]/55 shadow-[0_0_8px_currentColor]" />
-          <ShadowGlyph name="spark" size={20} className="relative filter drop-shadow-[0_0_8px_currentColor]" />
+        <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[#9d5ce0]/35 bg-[#050505] shadow-[0_0_26px_rgba(123,44,191,0.26)]">
+          <img
+            src="/void-shadow-blade-app-icon.png"
+            alt=""
+            aria-hidden="true"
+            className="size-full object-cover"
+          />
         </span>
         <span data-tauri-drag-region className="min-w-0">
-          <strong className="font-display block truncate text-xs font-black tracking-[0.18em] text-white">VOID // ASCENSION</strong>
-          <small className="mt-0.5 block truncate text-[8px] font-black tracking-[0.2em] text-[#655a70] uppercase">{activeSection} // Shadow Garden OS</small>
+          <strong className="font-display block truncate text-xs font-black tracking-[0.16em] text-white">VOID LAUNCHER</strong>
+          <small className="mt-0.5 block truncate text-[10px] font-semibold tracking-[0.1em] text-[#9f93a8] uppercase">{activeSection}</small>
         </span>
-      </div>
-
-      <div data-tauri-drag-region className="hidden flex-1 justify-center xl:flex">
-        <div className={`flex items-center gap-2 rounded-full border border-white/[0.065] bg-black/25 px-3.5 py-2 text-[8px] font-black tracking-[0.16em] uppercase ${status.tone}`}>
-          <motion.span animate={{ opacity: [1, 0.35, 1], scale: [1, 0.78, 1] }} transition={{ duration: 1.8, repeat: Infinity }} className={`size-1.5 rounded-full shadow-[0_0_11px_currentColor] ${status.dot}`} />
-          {status.label}
-        </div>
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-2" onDoubleClick={(event) => event.stopPropagation()}>

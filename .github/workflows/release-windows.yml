@@ -57,7 +57,7 @@ jobs:
       - name: Check out release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ steps.release.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -206,7 +206,7 @@ jobs:
           } else {
             & gh release create $env:RELEASE_TAG @assets `
               --repo $env:GH_REPO `
-              --target $env:GITHUB_SHA `
+              --verify-tag `
               --title "Void Launcher $env:RELEASE_TAG" `
               --generate-notes
             if ($LASTEXITCODE -ne 0) {

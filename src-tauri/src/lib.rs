@@ -21,6 +21,7 @@ pub mod instance;
 pub mod launch;
 pub mod modplatform;
 pub mod music;
+pub mod secure_store;
 pub mod state;
 pub mod system;
 
@@ -90,6 +91,7 @@ pub fn run() {
             // auth
             auth::commands::begin_microsoft_login,
             auth::commands::complete_microsoft_login,
+            auth::commands::restore_microsoft_session,
             // Spotify + Google/YouTube OAuth and playback
             music::connect_music_provider,
             music::get_music_connection,
@@ -103,6 +105,7 @@ pub fn run() {
             instance::commands::create_instance,
             instance::commands::update_instance_settings,
             instance::commands::install_mod,
+            instance::commands::install_shader,
             instance::commands::set_mod_enabled,
             // launching
             launch::commands::launch_instance,
@@ -111,9 +114,11 @@ pub fn run() {
             system::commands::get_java_status,
             system::commands::ensure_java_for_instance,
             system::commands::optimize_instance,
+            system::commands::apply_game_video_settings,
             // local settings
             state::get_settings_status,
             state::set_curseforge_api_key,
+            state::set_auth_persistence,
             // storage and native launcher controls
             diagnostics::commands::get_storage_report,
             diagnostics::commands::open_launcher_folder,
@@ -121,7 +126,6 @@ pub fn run() {
             diagnostics::commands::restart_launcher,
             // Discord Rich Presence (native IPC)
             discord_rpc::get_discord_rpc_status,
-            discord_rpc::set_discord_client_id,
             discord_rpc::update_discord_rpc,
         ])
         .run(tauri::generate_context!())

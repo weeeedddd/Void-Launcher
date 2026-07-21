@@ -77,15 +77,15 @@ export function ChronicleView() {
                 />
               </span>
               <div>
-                <p className={voidClientStyles.sectionKicker}>Encrypted intelligence // archive live</p>
+                <p className={voidClientStyles.sectionKicker}>Launcher news</p>
                 <p className="mt-1 text-[10px] font-bold tracking-[0.12em] text-[#655a70] uppercase">
-                  Shadow Garden relay 04
+                  Updates from the Void team
                 </p>
               </div>
             </div>
             <h1 className={voidClientStyles.pageTitle}>The Cult of Diablos Chronicle</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#94879f]">
-              Enter the classified record of client releases, native-engine doctrine and signals moving beneath the network.
+              Read launcher releases, engineering notes and upcoming features.
             </p>
           </div>
         </header>
@@ -93,12 +93,12 @@ export function ChronicleView() {
         <section aria-labelledby="chronicle-feed-heading">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className={voidClientStyles.sectionKicker}>Field reports</p>
+              <p className={voidClientStyles.sectionKicker}>From the team</p>
               <h2 id="chronicle-feed-heading" className="mt-1 font-display text-lg font-black tracking-[-0.025em] text-white">
                 Latest transmissions
               </h2>
             </div>
-            <span className={voidClientStyles.tag}>{NEWS_ENTRIES.length} decrypted entries</span>
+            <span className={voidClientStyles.tag}>{NEWS_ENTRIES.length} updates</span>
           </div>
 
           <div className="grid auto-rows-fr gap-5 md:grid-cols-2 2xl:grid-cols-4">

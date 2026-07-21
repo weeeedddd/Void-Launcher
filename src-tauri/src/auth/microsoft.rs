@@ -218,6 +218,42 @@ pub async fn poll_for_msa_tokens(
     }
 }
 
+/// Exchanges a Windows-encrypted refresh token for a new MSA token pair.
+/// The refresh token never crosses the Tauri IPC boundary.
+pub async fn refresh_msa_tokens(
+    http: &reqwest::Client,
+    refresh_token: &str,
+) -> Result<MsaTokens, LauncherError> {
+    let client_id = validate_client_id(CLIENT_ID)?;
+    let response = http
+        .post(TOKEN_URL)
+        .form(&[
+            ("client_id", client_id),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("scope", SCOPE),
+        ])
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        return Ok(response.json().await?);
+    }
+
+    let status = response.status();
+    let error = response.json::<MsaTokenError>().await.ok();
+    let detail = error
+        .as_ref()
+        .and_then(|value| value.error_description.as_deref())
+        .map(clean_oauth_description)
+        .filter(|value| !value.is_empty())
+        .or_else(|| error.as_ref().map(|value| value.error.as_str()))
+        .unwrap_or("the saved session is no longer valid");
+    Err(LauncherError::Auth(format!(
+        "Microsoft session refresh failed ({status}): {detail}"
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::validate_client_id;

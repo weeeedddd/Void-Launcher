@@ -1,13 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ShadowGlyph } from "./ShadowGlyph";
 import {
   chooseInstallDirectory,
   closeInstallerWindow,
@@ -20,947 +12,401 @@ import {
   type IInstallClientResult,
   type IInstallerProgress,
 } from "./installerApi";
-import { installerStyles as styles } from "./VoidInstallerApp.styles";
+import { ShadowGlyph } from "./ShadowGlyph";
 
 export type InstallerState = "WELCOME" | "PATH_SELECT" | "DOWNLOADING_CLIENT" | "DONE";
+type InstallerLanguageCode = "en" | "de" | "ru" | "ja" | "ko" | "fr" | "es";
+type ValidationCode = "empty" | "long" | "slashes" | "absolute" | "characters" | "relative";
 
-type InstallerLanguageCode =
-  | "en"
-  | "de"
-  | "ru"
-  | "ja"
-  | "fr"
-  | "es"
-  | "it"
-  | "pt"
-  | "tr"
-  | "pl"
-  | "ko"
-  | "zh"
-  | "vi";
-
-interface IInstallerLanguage {
-  code: InstallerLanguageCode;
-  label: string;
-  nativeLabel: string;
+interface ICopy {
+  languageName: string;
+  brandSubtitle: string;
+  integrity: string;
+  preview: string;
+  welcomeStep: string;
+  pathStep: string;
+  downloadStep: string;
+  doneStep: string;
+  welcomeTitle: string;
+  welcomeBody: string;
+  languageLabel: string;
+  pathTitle: string;
+  pathBody: string;
+  pathLabel: string;
+  browse: string;
+  browsing: string;
+  terms: string;
+  termsHint: string;
+  downloadTitle: string;
+  downloadBody: string;
+  completeTitle: string;
+  completeBody: string;
+  installedVersion: string;
+  installedPath: string;
+  next: string;
+  back: string;
+  install: string;
+  finish: string;
+  preparing: string;
+  downloading: string;
+  assembling: string;
+  verifying: string;
+  ready: string;
+  downloaded: string;
+  closeTitle: string;
+  closeBody: string;
+  cancel: string;
+  close: string;
+  minimize: string;
+  validation: Record<ValidationCode, string>;
+  nativeError: string;
+  fallbackNotice: string;
 }
 
-interface IInstallerStep {
-  id: InstallerState;
-  label: string;
-  meta: string;
-}
+const COPY: Record<InstallerLanguageCode, ICopy> = {
+  en: {
+    languageName: "English", brandSubtitle: "Void Launcher installer", integrity: "Installer verified", preview: "Web preview: native actions are disabled",
+    welcomeStep: "Welcome", pathStep: "Installation", downloadStep: "Download", doneStep: "Complete",
+    welcomeTitle: "Enter the Void.", welcomeBody: "Choose your language, then install the standalone Void Launcher in a few clean steps.", languageLabel: "Language",
+    pathTitle: "Choose an installation folder.", pathBody: "The launcher, managed Java runtimes, and local profiles will be stored here.", pathLabel: "Installation folder", browse: "Browse", browsing: "Opening…",
+    terms: "I accept the Terms of Service and Privacy Policy", termsHint: "Required before the installer can download and write the client.",
+    downloadTitle: "Installing Void Launcher", downloadBody: "The signed client payload is being downloaded and verified.",
+    completeTitle: "Void Launcher is ready.", completeBody: "Installation completed successfully. You can awaken the client now.", installedVersion: "Version", installedPath: "Installed to",
+    next: "Next", back: "Back", install: "Install Void Launcher", finish: "Launch Void Launcher", preparing: "Preparing secure download…", downloading: "Downloading Void Launcher…", assembling: "Preparing the native runtime…", verifying: "Verifying downloaded files…", ready: "Installation complete", downloaded: "downloaded",
+    closeTitle: "Cancel installation?", closeBody: "Closing now interrupts the active download. You can run the installer again later.", cancel: "Continue installing", close: "Close installer", minimize: "Minimize",
+    validation: { empty: "Choose an installation folder.", long: "The path must contain 240 characters or fewer.", slashes: "Use a Windows path with backslashes.", absolute: "Enter an absolute Windows drive or network path.", characters: "The path contains a character Windows does not allow.", relative: "Relative path segments are not allowed." },
+    nativeError: "The installer could not complete the action.", fallbackNotice: "The Windows default folder was unavailable, so the safe fallback remains selected.",
+  },
+  de: {
+    languageName: "Deutsch", brandSubtitle: "Installationsprogramm für Void Launcher", integrity: "Installer verifiziert", preview: "Web-Vorschau: Native Aktionen sind deaktiviert",
+    welcomeStep: "Willkommen", pathStep: "Installation", downloadStep: "Download", doneStep: "Fertig",
+    welcomeTitle: "Betritt die Leere.", welcomeBody: "Wähle deine Sprache und installiere den eigenständigen Void Launcher in wenigen übersichtlichen Schritten.", languageLabel: "Sprache",
+    pathTitle: "Wähle einen Installationsordner.", pathBody: "Launcher, verwaltete Java-Laufzeiten und lokale Profile werden hier gespeichert.", pathLabel: "Installationsordner", browse: "Durchsuchen", browsing: "Wird geöffnet…",
+    terms: "Ich akzeptiere die Nutzungsbedingungen und Datenschutzerklärung", termsHint: "Erforderlich, bevor der Client heruntergeladen und gespeichert werden kann.",
+    downloadTitle: "Void Launcher wird installiert", downloadBody: "Das signierte Client-Paket wird heruntergeladen und geprüft.",
+    completeTitle: "Void Launcher ist bereit.", completeBody: "Die Installation wurde erfolgreich abgeschlossen. Du kannst den Client jetzt starten.", installedVersion: "Version", installedPath: "Installiert unter",
+    next: "Weiter", back: "Zurück", install: "Void Launcher installieren", finish: "Void starten", preparing: "Sicherer Download wird vorbereitet…", downloading: "Void Launcher wird heruntergeladen…", assembling: "Native Laufzeit wird vorbereitet…", verifying: "Heruntergeladene Dateien werden geprüft…", ready: "Installation abgeschlossen", downloaded: "heruntergeladen",
+    closeTitle: "Installation abbrechen?", closeBody: "Beim Schließen wird der aktive Download unterbrochen. Du kannst den Installer später erneut starten.", cancel: "Installation fortsetzen", close: "Installer schließen", minimize: "Minimieren",
+    validation: { empty: "Wähle einen Installationsordner.", long: "Der Pfad darf höchstens 240 Zeichen enthalten.", slashes: "Verwende einen Windows-Pfad mit umgekehrten Schrägstrichen.", absolute: "Gib einen absoluten Windows- oder Netzwerkpfad ein.", characters: "Der Pfad enthält ein unter Windows unzulässiges Zeichen.", relative: "Relative Pfadbestandteile sind nicht erlaubt." },
+    nativeError: "Der Installer konnte die Aktion nicht abschließen.", fallbackNotice: "Der Windows-Standardordner war nicht verfügbar. Der sichere Ersatzpfad bleibt ausgewählt.",
+  },
+  ru: {
+    languageName: "Русский", brandSubtitle: "Установщик Void Launcher", integrity: "Установщик проверен", preview: "Веб-предпросмотр: системные действия отключены",
+    welcomeStep: "Добро пожаловать", pathStep: "Установка", downloadStep: "Загрузка", doneStep: "Готово",
+    welcomeTitle: "Войдите в Пустоту.", welcomeBody: "Выберите язык и установите отдельный Void Launcher за несколько простых шагов.", languageLabel: "Язык",
+    pathTitle: "Выберите папку установки.", pathBody: "Здесь будут храниться лаунчер, управляемая Java и локальные профили.", pathLabel: "Папка установки", browse: "Обзор", browsing: "Открытие…",
+    terms: "Я принимаю Условия использования и Политику конфиденциальности", termsHint: "Необходимо для загрузки и записи клиента.",
+    downloadTitle: "Установка Void Launcher", downloadBody: "Подписанный пакет клиента загружается и проверяется.",
+    completeTitle: "Void Launcher готов.", completeBody: "Установка успешно завершена. Теперь можно запустить клиент.", installedVersion: "Версия", installedPath: "Папка",
+    next: "Далее", back: "Назад", install: "Установить Void Launcher", finish: "Запустить Void", preparing: "Подготовка безопасной загрузки…", downloading: "Загрузка Void Launcher…", assembling: "Подготовка среды выполнения…", verifying: "Проверка загруженных файлов…", ready: "Установка завершена", downloaded: "загружено",
+    closeTitle: "Отменить установку?", closeBody: "Закрытие прервёт активную загрузку. Установщик можно запустить позже.", cancel: "Продолжить установку", close: "Закрыть установщик", minimize: "Свернуть",
+    validation: { empty: "Выберите папку установки.", long: "Путь должен содержать не более 240 символов.", slashes: "Используйте путь Windows с обратными слешами.", absolute: "Введите абсолютный путь Windows или сетевой путь.", characters: "Путь содержит недопустимый символ Windows.", relative: "Относительные сегменты пути запрещены." },
+    nativeError: "Установщик не смог выполнить действие.", fallbackNotice: "Стандартная папка Windows недоступна, выбран безопасный резервный путь.",
+  },
+  ja: {
+    languageName: "日本語", brandSubtitle: "Void Launcher インストーラー", integrity: "インストーラー確認済み", preview: "Web プレビュー: ネイティブ操作は無効です",
+    welcomeStep: "ようこそ", pathStep: "インストール", downloadStep: "ダウンロード", doneStep: "完了",
+    welcomeTitle: "Void へようこそ。", welcomeBody: "言語を選び、いくつかの簡単な手順で Void Launcher をインストールします。", languageLabel: "言語",
+    pathTitle: "インストール先を選択。", pathBody: "ランチャー、Java ランタイム、ローカルプロファイルが保存されます。", pathLabel: "インストール先", browse: "参照", browsing: "開いています…",
+    terms: "利用規約とプライバシーポリシーに同意します", termsHint: "クライアントをダウンロードする前に必要です。",
+    downloadTitle: "Void Launcher をインストール中", downloadBody: "署名済みクライアントをダウンロードして検証しています。",
+    completeTitle: "Void Launcher の準備完了。", completeBody: "インストールが完了しました。クライアントを起動できます。", installedVersion: "バージョン", installedPath: "インストール先",
+    next: "次へ", back: "戻る", install: "Void Launcher をインストール", finish: "Void を起動", preparing: "安全なダウンロードを準備中…", downloading: "Void Launcher をダウンロード中…", assembling: "ランタイムを準備中…", verifying: "ファイルを検証中…", ready: "インストール完了", downloaded: "ダウンロード済み",
+    closeTitle: "インストールを中止しますか？", closeBody: "閉じるとダウンロードが中断されます。後で再実行できます。", cancel: "インストールを続ける", close: "閉じる", minimize: "最小化",
+    validation: { empty: "インストール先を選択してください。", long: "パスは 240 文字以内にしてください。", slashes: "Windows のバックスラッシュ形式を使用してください。", absolute: "絶対パスまたはネットワークパスを入力してください。", characters: "Windows で使用できない文字が含まれています。", relative: "相対パスは使用できません。" },
+    nativeError: "インストーラーが操作を完了できませんでした。", fallbackNotice: "Windows の既定フォルダーを取得できないため、安全な代替パスを使用します。",
+  },
+  ko: {
+    languageName: "한국어", brandSubtitle: "Void Launcher 설치 프로그램", integrity: "설치 프로그램 확인됨", preview: "웹 미리보기: 시스템 작업이 비활성화됨",
+    welcomeStep: "환영합니다", pathStep: "설치", downloadStep: "다운로드", doneStep: "완료",
+    welcomeTitle: "Void에 입장하세요.", welcomeBody: "언어를 선택하고 간단한 단계로 독립형 Void Launcher를 설치하세요.", languageLabel: "언어",
+    pathTitle: "설치 폴더를 선택하세요.", pathBody: "런처, 관리형 Java 런타임 및 로컬 프로필이 저장됩니다.", pathLabel: "설치 폴더", browse: "찾아보기", browsing: "여는 중…",
+    terms: "서비스 약관 및 개인정보 보호정책에 동의합니다", termsHint: "클라이언트를 다운로드하고 저장하기 전에 필요합니다.",
+    downloadTitle: "Void Launcher 설치 중", downloadBody: "서명된 클라이언트 패키지를 다운로드하고 확인하고 있습니다.",
+    completeTitle: "Void Launcher가 준비되었습니다.", completeBody: "설치가 완료되었습니다. 이제 클라이언트를 시작할 수 있습니다.", installedVersion: "버전", installedPath: "설치 위치",
+    next: "다음", back: "뒤로", install: "Void Launcher 설치", finish: "Void 시작", preparing: "안전한 다운로드 준비 중…", downloading: "Void Launcher 다운로드 중…", assembling: "런타임 준비 중…", verifying: "파일 확인 중…", ready: "설치 완료", downloaded: "다운로드됨",
+    closeTitle: "설치를 취소할까요?", closeBody: "지금 닫으면 다운로드가 중단됩니다. 나중에 다시 실행할 수 있습니다.", cancel: "설치 계속", close: "설치 프로그램 닫기", minimize: "최소화",
+    validation: { empty: "설치 폴더를 선택하세요.", long: "경로는 240자 이하여야 합니다.", slashes: "Windows 백슬래시 경로를 사용하세요.", absolute: "절대 Windows 또는 네트워크 경로를 입력하세요.", characters: "Windows에서 허용되지 않는 문자가 있습니다.", relative: "상대 경로는 허용되지 않습니다." },
+    nativeError: "설치 프로그램이 작업을 완료하지 못했습니다.", fallbackNotice: "Windows 기본 폴더를 사용할 수 없어 안전한 대체 경로를 선택했습니다.",
+  },
+  fr: {
+    languageName: "Français", brandSubtitle: "Programme d’installation de Void Launcher", integrity: "Installateur vérifié", preview: "Aperçu web : actions natives désactivées",
+    welcomeStep: "Bienvenue", pathStep: "Installation", downloadStep: "Téléchargement", doneStep: "Terminé",
+    welcomeTitle: "Entrez dans le Void.", welcomeBody: "Choisissez votre langue, puis installez Void Launcher en quelques étapes simples.", languageLabel: "Langue",
+    pathTitle: "Choisissez un dossier d’installation.", pathBody: "Le launcher, Java et les profils locaux seront stockés ici.", pathLabel: "Dossier d’installation", browse: "Parcourir", browsing: "Ouverture…",
+    terms: "J’accepte les Conditions d’utilisation et la Politique de confidentialité", termsHint: "Obligatoire avant le téléchargement du client.", downloadTitle: "Installation de Void Launcher", downloadBody: "Le client signé est téléchargé et vérifié.", completeTitle: "Void Launcher est prêt.", completeBody: "L’installation est terminée. Vous pouvez démarrer le client.", installedVersion: "Version", installedPath: "Installé dans",
+    next: "Suivant", back: "Retour", install: "Installer Void Launcher", finish: "Éveiller Void", preparing: "Préparation du téléchargement…", downloading: "Téléchargement de Void Launcher…", assembling: "Préparation de Java…", verifying: "Vérification des fichiers…", ready: "Installation terminée", downloaded: "téléchargé",
+    closeTitle: "Annuler l’installation ?", closeBody: "La fermeture interrompra le téléchargement actif.", cancel: "Continuer", close: "Fermer", minimize: "Réduire",
+    validation: { empty: "Choisissez un dossier d’installation.", long: "Le chemin doit contenir 240 caractères maximum.", slashes: "Utilisez un chemin Windows avec des barres inverses.", absolute: "Saisissez un chemin Windows ou réseau absolu.", characters: "Le chemin contient un caractère interdit.", relative: "Les segments relatifs ne sont pas autorisés." }, nativeError: "L’installateur n’a pas pu terminer l’action.", fallbackNotice: "Le dossier Windows par défaut est indisponible ; le chemin de secours reste sélectionné.",
+  },
+  es: {
+    languageName: "Español", brandSubtitle: "Instalador de Void Launcher", integrity: "Instalador verificado", preview: "Vista web: acciones nativas desactivadas",
+    welcomeStep: "Bienvenida", pathStep: "Instalación", downloadStep: "Descarga", doneStep: "Completo",
+    welcomeTitle: "Entra en el Void.", welcomeBody: "Elige tu idioma e instala Void Launcher en unos pocos pasos.", languageLabel: "Idioma",
+    pathTitle: "Elige una carpeta de instalación.", pathBody: "El launcher, Java y los perfiles locales se guardarán aquí.", pathLabel: "Carpeta de instalación", browse: "Examinar", browsing: "Abriendo…",
+    terms: "Acepto los Términos de servicio y la Política de privacidad", termsHint: "Obligatorio antes de descargar el cliente.", downloadTitle: "Instalando Void Launcher", downloadBody: "El cliente firmado se está descargando y verificando.", completeTitle: "Void Launcher está listo.", completeBody: "La instalación terminó correctamente. Ya puedes iniciar el cliente.", installedVersion: "Versión", installedPath: "Instalado en",
+    next: "Siguiente", back: "Atrás", install: "Instalar Void Launcher", finish: "Despertar Void", preparing: "Preparando descarga segura…", downloading: "Descargando Void Launcher…", assembling: "Preparando Java…", verifying: "Verificando archivos…", ready: "Instalación completa", downloaded: "descargado",
+    closeTitle: "¿Cancelar la instalación?", closeBody: "Cerrar interrumpirá la descarga activa.", cancel: "Continuar", close: "Cerrar instalador", minimize: "Minimizar",
+    validation: { empty: "Elige una carpeta de instalación.", long: "La ruta debe tener 240 caracteres o menos.", slashes: "Usa una ruta de Windows con barras invertidas.", absolute: "Introduce una ruta absoluta de Windows o red.", characters: "La ruta contiene un carácter no permitido.", relative: "No se permiten segmentos relativos." }, nativeError: "El instalador no pudo completar la acción.", fallbackNotice: "La carpeta predeterminada no está disponible; se mantiene la ruta segura alternativa.",
+  },
+};
 
-const FALLBACK_INSTALL_PATH = "C:\\Users\\Username\\AppData\\Local\\Programs\\Void Launcher";
-const PREVIEW_TOTAL_BYTES = 301_989_888;
+const LANGUAGES = (Object.keys(COPY) as InstallerLanguageCode[]).map((code) => ({ code, label: COPY[code].languageName }));
+const FALLBACK_PATH = "C:\\Users\\Username\\AppData\\Local\\Programs\\Void Launcher";
+const PREVIEW_BYTES = 301_989_888;
 
-const LANGUAGES: ReadonlyArray<IInstallerLanguage> = [
-  { code: "en", label: "English", nativeLabel: "English" },
-  { code: "de", label: "German", nativeLabel: "Deutsch" },
-  { code: "ru", label: "Russian", nativeLabel: "Русский" },
-  { code: "ja", label: "Japanese", nativeLabel: "日本語" },
-  { code: "fr", label: "French", nativeLabel: "Français" },
-  { code: "es", label: "Spanish", nativeLabel: "Español" },
-  { code: "it", label: "Italian", nativeLabel: "Italiano" },
-  { code: "pt", label: "Portuguese", nativeLabel: "Português" },
-  { code: "tr", label: "Turkish", nativeLabel: "Türkçe" },
-  { code: "pl", label: "Polish", nativeLabel: "Polski" },
-  { code: "ko", label: "Korean", nativeLabel: "한국어" },
-  { code: "zh", label: "Chinese", nativeLabel: "中文" },
-  { code: "vi", label: "Vietnamese", nativeLabel: "Tiếng Việt" },
-] as const;
-
-const STEPS: ReadonlyArray<IInstallerStep> = [
-  { id: "WELCOME", label: "Void Entry", meta: "Language protocol" },
-  { id: "PATH_SELECT", label: "Local Node", meta: "Path and consent" },
-  { id: "DOWNLOADING_CLIENT", label: "Core Transfer", meta: "Verified payload" },
-  { id: "DONE", label: "Awakening", meta: "Client ready" },
-] as const;
-
-function isLanguageCode(value: string): value is InstallerLanguageCode {
-  return LANGUAGES.some((language) => language.code === value);
-}
-
-function getStepIndex(state: InstallerState): number {
-  return STEPS.findIndex((step) => step.id === state);
-}
-
-function getPathValidationMessage(value: string): string | null {
+function validationCode(value: string): ValidationCode | null {
   const path = value.trim();
-
-  if (path.length === 0) return "Choose an installation directory before continuing.";
-  if (path.length > 240) return "The installation path must contain 240 characters or fewer.";
-  if (path.includes("/")) return "Use a Windows path with backslashes, for example C:\\Programs\\Void Launcher.";
-
-  const isDrivePath = /^[A-Za-z]:\\/.test(path);
-  const isNetworkPath = /^\\\\[^\\]+\\[^\\]+/.test(path);
-  if (!isDrivePath && !isNetworkPath) {
-    return "Enter an absolute Windows drive or network path.";
-  }
-
-  const pathBody = isDrivePath ? path.slice(2) : path;
-  if (/[<>:"|?*\u0000-\u001F]/.test(pathBody)) {
-    return "The installation path contains a character Windows does not allow.";
-  }
-
-  const segments = path.split("\\").filter(Boolean);
-  if (segments.some((segment) => segment === "." || segment === "..")) {
-    return "Relative path segments are not allowed in the installation directory.";
-  }
-
+  if (!path) return "empty";
+  if (path.length > 240) return "long";
+  if (path.includes("/")) return "slashes";
+  const drive = /^[A-Za-z]:\\/.test(path);
+  const network = /^\\\\[^\\]+\\[^\\]+/.test(path);
+  if (!drive && !network) return "absolute";
+  const body = drive ? path.slice(2) : path;
+  if (/[<>:"|?*\u0000-\u001F]/.test(body)) return "characters";
+  if (path.split("\\").filter(Boolean).some((part) => part === "." || part === "..")) return "relative";
   return null;
 }
 
-function formatBytes(bytes: number): string {
+function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"] as const;
-  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** unitIndex;
-  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-function errorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const cleanMessage = message.replace(/[\u0000-\u001F\u007F]/g, " ").trim().slice(0, 240);
-  return cleanMessage || "The native installer returned an unknown error.";
+function safeError(error: unknown) {
+  return (error instanceof Error ? error.message : String(error)).replace(/[\u0000-\u001F\u007F]/g, " ").trim().slice(0, 220);
 }
 
-function previewStatus(percentage: number): string {
-  if (percentage >= 94) return "Verifying client signature...";
-  if (percentage >= 72) return "Assembling native runtime...";
-  if (percentage >= 43) return "Resolving managed assets...";
-  if (percentage >= 18) return "Downloading Void Client payload...";
-  return "Opening secure transfer channel...";
+function statusText(copy: ICopy, percentage: number) {
+  if (percentage >= 94) return copy.verifying;
+  if (percentage >= 58) return copy.assembling;
+  if (percentage >= 12) return copy.downloading;
+  return copy.preparing;
 }
 
 export function VoidInstallerApp() {
   const [state, setState] = useState<InstallerState>("WELCOME");
   const [language, setLanguage] = useState<InstallerLanguageCode>("en");
-  const [installationPath, setInstallationPath] = useState(FALLBACK_INSTALL_PATH);
+  const [installationPath, setInstallationPath] = useState(FALLBACK_PATH);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [pathTouched, setPathTouched] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
-  const [progress, setProgress] = useState<IInstallerProgress>({
-    downloadedBytes: 0,
-    totalBytes: 0,
-    percentage: 0,
-    status: "Preparing secure transfer...",
-  });
-  const [installResult, setInstallResult] = useState<IInstallClientResult | null>(null);
-  const [installerError, setInstallerError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [result, setResult] = useState<IInstallClientResult | null>(null);
+  const [progress, setProgress] = useState<IInstallerProgress>({ downloadedBytes: 0, totalBytes: 0, percentage: 0, status: "" });
+  const unlistenRef = useRef<(() => void) | null>(null);
+  const previewTimerRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
-  const previewTimersRef = useRef<Set<number>>(new Set());
-  const unlistenProgressRef = useRef<(() => void) | null>(null);
-  const launchRequestedRef = useRef(false);
-  const reduceMotion = Boolean(useReducedMotion());
   const nativeRuntime = useMemo(() => isNativeRuntime(), []);
-
-  const normalizedPath = installationPath.trim();
-  const pathError = getPathValidationMessage(normalizedPath);
-  const canInstall = pathError === null && acceptedTerms && !isBrowsing;
-  const activeStepIndex = getStepIndex(state);
-  const selectedLanguage = LANGUAGES.find((item) => item.code === language) ?? LANGUAGES[0];
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-      previewTimersRef.current.forEach((timerId) => window.clearInterval(timerId));
-      previewTimersRef.current.clear();
-      unlistenProgressRef.current?.();
-      unlistenProgressRef.current = null;
-    };
-  }, []);
+  const reducedMotion = Boolean(useReducedMotion());
+  const copy = COPY[language];
+  const pathCode = validationCode(installationPath);
+  const canInstall = pathCode === null && acceptedTerms && !isBrowsing;
+  const stepIndex = (["WELCOME", "PATH_SELECT", "DOWNLOADING_CLIENT", "DONE"] as InstallerState[]).indexOf(state);
 
   useEffect(() => {
     document.documentElement.lang = language;
   }, [language]);
 
   useEffect(() => {
-    if (!nativeRuntime) return undefined;
-
-    let cancelled = false;
-    void getDefaultInstallPath()
-      .then((defaultPath) => {
-        if (!cancelled && defaultPath.trim()) setInstallationPath(defaultPath.trim());
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setNotice(`The native default path was unavailable. The safe fallback remains selected. ${errorMessage(error)}`);
-        }
-      });
-
+    mountedRef.current = true;
+    if (nativeRuntime) {
+      void getDefaultInstallPath().then((path) => {
+        if (mountedRef.current && path.trim()) setInstallationPath(path.trim());
+      }).catch(() => setNotice(copy.fallbackNotice));
+    }
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
+      unlistenRef.current?.();
+      if (previewTimerRef.current !== null) window.clearInterval(previewTimerRef.current);
     };
-  }, [nativeRuntime]);
+  }, [copy.fallbackNotice, nativeRuntime]);
 
-  const handleLanguageChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    if (isLanguageCode(event.target.value)) setLanguage(event.target.value);
-  }, []);
-
-  const handlePathChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setInstallationPath(event.target.value);
-    setPathTouched(true);
-    setInstallerError(null);
-  }, []);
-
-  const handleTermsChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setAcceptedTerms(event.target.checked);
-    setInstallerError(null);
-  }, []);
-
-  const handleBrowse = useCallback(async () => {
-    if (isBrowsing || state !== "PATH_SELECT") return;
+  const browse = useCallback(async () => {
     setIsBrowsing(true);
-    setInstallerError(null);
-
-    if (!nativeRuntime) {
-      const timerId = window.setTimeout(() => {
-        previewTimersRef.current.delete(timerId);
-        if (mountedRef.current) {
-          setInstallationPath("C:\\Users\\PreviewUser\\AppData\\Local\\Programs\\Void Launcher");
-          setPathTouched(true);
-          setNotice("Web preview: a deterministic sample path was selected. No system folder picker was opened.");
-          setIsBrowsing(false);
-        }
-      }, reduceMotion ? 20 : 260);
-      previewTimersRef.current.add(timerId);
-      return;
-    }
-
-    try {
-      const selectedPath = await chooseInstallDirectory(normalizedPath || FALLBACK_INSTALL_PATH);
-      if (mountedRef.current && selectedPath) {
-        setInstallationPath(selectedPath);
-        setPathTouched(true);
-      }
-    } catch (error: unknown) {
-      if (mountedRef.current) setInstallerError(`The folder picker could not be opened. ${errorMessage(error)}`);
-    } finally {
-      if (mountedRef.current) setIsBrowsing(false);
-    }
-  }, [isBrowsing, nativeRuntime, normalizedPath, reduceMotion, state]);
-
-  const runPreviewInstallation = useCallback((): Promise<void> => {
-    return new Promise((resolve) => {
-      let tick = 0;
-      const tickCount = reduceMotion ? 20 : 50;
-      const timerId = window.setInterval(() => {
-        tick += 1;
-        const percentage = Math.min(100, (tick / tickCount) * 100);
-        const downloadedBytes = Math.round(PREVIEW_TOTAL_BYTES * (percentage / 100));
-        setProgress({
-          downloadedBytes,
-          totalBytes: PREVIEW_TOTAL_BYTES,
-          percentage,
-          status: previewStatus(percentage),
-        });
-
-        if (percentage >= 100) {
-          window.clearInterval(timerId);
-          previewTimersRef.current.delete(timerId);
-          resolve();
-        }
-      }, reduceMotion ? 18 : 72);
-      previewTimersRef.current.add(timerId);
-    });
-  }, [reduceMotion]);
-
-  const startInstallation = useCallback(async () => {
-    setPathTouched(true);
-    setInstallerError(null);
-    setNotice(null);
-
-    const validationError = getPathValidationMessage(normalizedPath);
-    if (validationError !== null || !acceptedTerms || state !== "PATH_SELECT") return;
-
-    setProgress({
-      downloadedBytes: 0,
-      totalBytes: nativeRuntime ? 0 : PREVIEW_TOTAL_BYTES,
-      percentage: 0,
-      status: "Opening secure transfer channel...",
-    });
-    setState("DOWNLOADING_CLIENT");
-
+    setError(null);
     try {
       if (nativeRuntime) {
-        unlistenProgressRef.current?.();
-        unlistenProgressRef.current = await subscribeToInstallerProgress((nextProgress) => {
-          if (!mountedRef.current) return;
-          setProgress((currentProgress) => ({
-            ...nextProgress,
-            percentage: Math.max(currentProgress.percentage, nextProgress.percentage),
-          }));
-        });
-
-        const result = await installClient(normalizedPath);
-        if (!mountedRef.current) return;
-        setInstallResult(result);
-        setProgress((currentProgress) => ({
-          downloadedBytes: currentProgress.totalBytes || currentProgress.downloadedBytes,
-          totalBytes: currentProgress.totalBytes,
-          percentage: 100,
-          status: "Void Client payload verified.",
-        }));
+        const selected = await chooseInstallDirectory(installationPath.trim() || FALLBACK_PATH);
+        if (selected) setInstallationPath(selected);
       } else {
-        await runPreviewInstallation();
-        if (!mountedRef.current) return;
-        setInstallResult({
-          installedExecutable: `${normalizedPath}\\Void Launcher.exe — preview only, no file written`,
-          version: "Preview 0.1.0",
-          shortcutWarning: null,
-        });
+        setInstallationPath("C:\\Users\\PreviewUser\\AppData\\Local\\Programs\\Void Launcher");
       }
+      setPathTouched(true);
+    } catch (cause) {
+      setError(`${copy.nativeError} ${safeError(cause)}`);
+    } finally {
+      setIsBrowsing(false);
+    }
+  }, [copy.nativeError, installationPath, nativeRuntime]);
 
-      const completionTimer = window.setTimeout(() => {
-        previewTimersRef.current.delete(completionTimer);
-        if (mountedRef.current) setState("DONE");
-      }, reduceMotion ? 20 : 280);
-      previewTimersRef.current.add(completionTimer);
-    } catch (error: unknown) {
-      if (!mountedRef.current) return;
-      setInstallerError(`Void Client could not be installed. ${errorMessage(error)}`);
+  const runPreview = useCallback(() => new Promise<void>((resolve) => {
+    let tick = 0;
+    const ticks = reducedMotion ? 10 : 42;
+    previewTimerRef.current = window.setInterval(() => {
+      tick += 1;
+      const percentage = Math.min(100, (tick / ticks) * 100);
+      setProgress({ downloadedBytes: Math.round(PREVIEW_BYTES * percentage / 100), totalBytes: PREVIEW_BYTES, percentage, status: "" });
+      if (percentage >= 100 && previewTimerRef.current !== null) {
+        window.clearInterval(previewTimerRef.current);
+        previewTimerRef.current = null;
+        resolve();
+      }
+    }, reducedMotion ? 12 : 75);
+  }), [reducedMotion]);
+
+  const install = useCallback(async () => {
+    setPathTouched(true);
+    setError(null);
+    setNotice(null);
+    if (!canInstall || state !== "PATH_SELECT") return;
+    setState("DOWNLOADING_CLIENT");
+    setProgress({ downloadedBytes: 0, totalBytes: nativeRuntime ? 0 : PREVIEW_BYTES, percentage: 0, status: "" });
+    try {
+      if (nativeRuntime) {
+        unlistenRef.current = await subscribeToInstallerProgress((next) => setProgress((current) => ({ ...next, percentage: Math.max(current.percentage, next.percentage) })));
+        const installed = await installClient(installationPath.trim());
+        setResult(installed);
+        setProgress((current) => ({ ...current, downloadedBytes: current.totalBytes || current.downloadedBytes, percentage: 100 }));
+      } else {
+        await runPreview();
+        setResult({ installedExecutable: `${installationPath.trim()}\\Void Launcher.exe`, version: "Preview 0.1.0", shortcutWarning: null });
+      }
+      window.setTimeout(() => mountedRef.current && setState("DONE"), reducedMotion ? 10 : 260);
+    } catch (cause) {
+      setError(`${copy.nativeError} ${safeError(cause)}`);
       setState("PATH_SELECT");
     } finally {
-      unlistenProgressRef.current?.();
-      unlistenProgressRef.current = null;
+      unlistenRef.current?.();
+      unlistenRef.current = null;
     }
-  }, [acceptedTerms, nativeRuntime, normalizedPath, reduceMotion, runPreviewInstallation, state]);
+  }, [canInstall, copy.nativeError, installationPath, nativeRuntime, reducedMotion, runPreview, state]);
 
-  const handleNext = useCallback(() => {
-    if (state === "WELCOME") {
-      setNotice(null);
-      setState("PATH_SELECT");
-    }
-  }, [state]);
-
-  const handleBack = useCallback(() => {
-    if (state === "PATH_SELECT") {
-      setInstallerError(null);
-      setState("WELCOME");
-    }
-  }, [state]);
-
-  const handleFinish = useCallback(async () => {
-    if (state !== "DONE" || launchRequestedRef.current) return;
-    launchRequestedRef.current = true;
-    setInstallerError(null);
-
-    if (!nativeRuntime) {
-      setNotice("Web preview complete: launching and closing require the standalone native Bootstrapper.");
-      launchRequestedRef.current = false;
-      return;
-    }
-
+  const finish = useCallback(async () => {
     try {
-      await finishAndLaunch();
-    } catch (error: unknown) {
-      if (mountedRef.current) {
-        setInstallerError(`Void Launcher could not be started. ${errorMessage(error)}`);
-        launchRequestedRef.current = false;
-      }
+      if (nativeRuntime) await finishAndLaunch();
+      else setNotice(copy.preview);
+    } catch (cause) {
+      setError(`${copy.nativeError} ${safeError(cause)}`);
     }
-  }, [nativeRuntime, state]);
+  }, [copy.nativeError, copy.preview, nativeRuntime]);
 
-  const handleMinimize = useCallback(async () => {
-    if (!nativeRuntime) {
-      setNotice("Web preview: window controls are available only in the native Bootstrapper.");
-      return;
-    }
-    try {
-      await minimizeInstallerWindow();
-    } catch (error: unknown) {
-      if (mountedRef.current) setInstallerError(`The window could not be minimized. ${errorMessage(error)}`);
-    }
-  }, [nativeRuntime]);
+  const close = useCallback(async () => {
+    setCloseOpen(false);
+    if (nativeRuntime) await closeInstallerWindow();
+    else setNotice(copy.preview);
+  }, [copy.preview, nativeRuntime]);
 
-  const performClose = useCallback(async () => {
-    setCloseConfirmationOpen(false);
-    if (!nativeRuntime) {
-      setNotice("Web preview: close the browser tab to exit this preview.");
-      return;
-    }
-    try {
-      await closeInstallerWindow();
-    } catch (error: unknown) {
-      if (mountedRef.current) setInstallerError(`The Bootstrapper could not close. ${errorMessage(error)}`);
-    }
-  }, [nativeRuntime]);
+  const minimize = useCallback(async () => {
+    if (nativeRuntime) await minimizeInstallerWindow();
+    else setNotice(copy.preview);
+  }, [copy.preview, nativeRuntime]);
 
-  const handleCloseRequest = useCallback(() => {
-    if (state === "DOWNLOADING_CLIENT") {
-      setCloseConfirmationOpen(true);
-      return;
-    }
-    void performClose();
-  }, [performClose, state]);
+  const requestClose = useCallback(() => {
+    if (state === "DOWNLOADING_CLIENT") setCloseOpen(true);
+    else void close();
+  }, [close, state]);
+
+  const steps = [copy.welcomeStep, copy.pathStep, copy.downloadStep, copy.doneStep];
 
   return (
-    <main className={styles.page} aria-busy={state === "DOWNLOADING_CLIENT"}>
-      <InstallerAmbient reducedMotion={reduceMotion} />
-      <div className={styles.shellOuter}>
-        <div className={styles.shellBorder}>
-          <section className={styles.shell} aria-labelledby="installer-stage-title" data-installer-state={state}>
-            <InstallerTitlebar onClose={handleCloseRequest} onMinimize={handleMinimize} />
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#050505] p-4 text-white selection:bg-[#7B2CBF]/45">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(123,44,191,0.22),transparent_34%),radial-gradient(circle_at_88%_88%,rgba(44,57,140,0.13),transparent_35%),linear-gradient(145deg,#050505,#0F0B15_58%,#050505)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(216,180,254,.25)_1px,transparent_1px),linear-gradient(90deg,rgba(216,180,254,.25)_1px,transparent_1px)] [background-size:54px_54px] [mask-image:radial-gradient(circle,black,transparent_78%)]" />
 
-            {!nativeRuntime ? (
-              <div className={styles.previewBanner} role="status">
-                <span className={styles.previewDot} aria-hidden="true" />
-                Web preview · Native download, file writes, launch, and window controls are disabled
-              </div>
-            ) : null}
+      <section className="relative flex h-[min(760px,calc(100vh-32px))] w-[min(1120px,calc(100vw-32px))] flex-col overflow-hidden border border-[#9d5ce0]/25 bg-[#08060b]/96 shadow-[0_40px_120px_rgba(0,0,0,.82),0_0_70px_rgba(123,44,191,.12)] backdrop-blur-2xl [clip-path:polygon(0_0,97%_0,100%_5%,100%_100%,3%_100%,0_95%)]">
+        <header data-tauri-drag-region className="flex h-16 shrink-0 items-center border-b border-white/[0.06] bg-[#0F0B15]/90 px-5" onDoubleClick={() => undefined}>
+          <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-3">
+            <span className="grid size-10 place-items-center overflow-hidden rounded-xl border border-[#9d5ce0]/28 bg-[#050505] shadow-[0_0_20px_rgba(123,44,191,0.2)]"><img src="/void-shadow-blade-app-icon.png" alt="" aria-hidden="true" className="size-full object-cover" /></span>
+            <span data-tauri-drag-region><strong className="font-display block text-xs font-black tracking-[0.16em]">VOID LAUNCHER</strong><small className="mt-0.5 block text-[9px] text-[#9e91a8]">{copy.brandSubtitle}</small></span>
+          </div>
+          <div className="ml-4 flex gap-1">
+            <button type="button" onClick={minimize} aria-label={copy.minimize} title={copy.minimize} className="grid size-11 cursor-pointer place-items-center text-[#8f8398] transition duration-200 hover:bg-white/[0.055] hover:text-white focus-visible:outline-2 focus-visible:outline-[#c084fc]"><ShadowGlyph name="minimize" size={15} /></button>
+            <button type="button" onClick={requestClose} aria-label={copy.close} title={copy.close} className="grid size-11 cursor-pointer place-items-center text-[#8f8398] transition duration-200 hover:bg-red-500/15 hover:text-red-200 focus-visible:outline-2 focus-visible:outline-red-300"><ShadowGlyph name="close" size={15} /></button>
+          </div>
+        </header>
 
-            <header className={styles.header}>
-              <div className={styles.brand}>
-                <span className={styles.titleMark} aria-hidden="true">
-                  <ShadowGlyph name="mark" size={21} className="filter drop-shadow-[0_0_9px_currentColor]" />
-                </span>
-                <span className={styles.brandCopy}>
-                  <strong className={styles.brandTitle}>Void // Bootstrapper</strong>
-                  <small className={styles.brandMeta}>Standalone Client Deployment Node</small>
-                </span>
-              </div>
-              <div className={styles.integrityBadge}>
-                <ShadowGlyph name="shield" size={14} />
-                Installer integrity active
-              </div>
-            </header>
+        {!nativeRuntime && <div className="border-b border-amber-300/16 bg-amber-300/[0.055] px-5 py-2 text-center text-[9px] font-bold text-amber-100">{copy.preview}</div>}
 
-            {installerError ? (
-              <div className={styles.globalError} role="alert">
-                <ShadowGlyph name="close" size={16} className="mt-0.5 shrink-0" />
-                <span>{installerError}</span>
-              </div>
-            ) : null}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="border-b border-white/[0.055] bg-[#0B0810]/68 px-5 py-3 sm:px-8">
+            <ol className="mx-auto grid max-w-3xl grid-cols-4 gap-2">
+              {steps.map((label, index) => (
+                <li key={label} className={`relative flex min-h-10 items-center justify-center gap-2 rounded-xl border px-2 py-1.5 transition duration-200 ${index === stepIndex ? "border-[#a855f7]/45 bg-[#7B2CBF]/14 text-white" : index < stepIndex ? "border-[#72f2a8]/14 bg-[#72f2a8]/[0.035] text-[#b9aec2]" : "border-white/[0.055] bg-black/15 text-[#716778]"}`}>
+                  <span className={`grid size-6 shrink-0 place-items-center rounded-lg border text-[10px] font-black ${index <= stepIndex ? "border-[#a855f7]/35 text-[#d8b4fe]" : "border-white/[0.08]"}`}>{index < stepIndex ? <ShadowGlyph name="check" size={12} /> : index + 1}</span>
+                  <span className="hidden text-[10px] font-bold sm:block">{label}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
 
-            {notice ? (
-              <div className={styles.notice} role="status">
-                <ShadowGlyph name="shield" size={16} className="mt-0.5 shrink-0" />
-                <span>{notice}</span>
-              </div>
-            ) : null}
+          <div className="relative min-h-0 flex-1 overflow-y-auto p-6 sm:p-9 lg:p-10">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={state} initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 14, filter: "blur(4px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -8, filter: "blur(3px)" }} transition={{ duration: reducedMotion ? 0.01 : 0.26, ease: [0.22, 1, 0.36, 1] }}>
+                {state === "WELCOME" && (
+                  <div className="mx-auto max-w-2xl py-4 sm:py-10">
+                    <img src="/void-shadow-blade-logo.png" alt="Void Launcher Shadow Blade emblem" className="size-24 object-contain filter drop-shadow-[0_0_24px_rgba(123,44,191,.4)]" />
+                    <h1 className="font-display mt-7 text-[clamp(2rem,5vw,4rem)] leading-[.95] font-black tracking-[-0.055em]">{copy.welcomeTitle}</h1>
+                    <p className="mt-5 max-w-xl text-sm leading-7 text-[#afa4b8]">{copy.welcomeBody}</p>
+                    <label htmlFor="installer-language" className="mt-9 block max-w-sm"><span className="mb-2 block text-[10px] font-black tracking-[0.13em] text-[#c9a6e3] uppercase">{copy.languageLabel}</span><select id="installer-language" value={language} onChange={(event: ChangeEvent<HTMLSelectElement>) => setLanguage(event.target.value as InstallerLanguageCode)} className="h-13 w-full cursor-pointer border border-[#9d5ce0]/28 bg-[#0F0B15] px-4 text-sm text-white outline-none transition focus:border-[#d8b4fe] focus:ring-2 focus:ring-[#7B2CBF]/45">{LANGUAGES.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
+                  </div>
+                )}
 
-            <div className={styles.content}>
-              <InstallerRail activeStepIndex={activeStepIndex} />
-              <div className={styles.viewport}>
-                <div className={styles.viewportRune} aria-hidden="true" />
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={state}
-                    className={styles.stage}
-                    initial={reduceMotion ? false : { opacity: 0, x: 22, filter: "blur(5px)" }}
-                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                    exit={reduceMotion ? { opacity: 1 } : { opacity: 0, x: -16, filter: "blur(4px)" }}
-                    transition={{ duration: reduceMotion ? 0.01 : 0.3, ease: [0.22, 1, 0.36, 1] }}
-                  >
-                    {state === "WELCOME" ? (
-                      <WelcomeStage
-                        language={language}
-                        onLanguageChange={handleLanguageChange}
-                        reducedMotion={reduceMotion}
-                      />
-                    ) : null}
-                    {state === "PATH_SELECT" ? (
-                      <PathSelectStage
-                        acceptedTerms={acceptedTerms}
-                        installationPath={installationPath}
-                        isBrowsing={isBrowsing}
-                        pathError={pathError}
-                        pathTouched={pathTouched}
-                        onBrowse={handleBrowse}
-                        onPathChange={handlePathChange}
-                        onTermsChange={handleTermsChange}
-                      />
-                    ) : null}
-                    {state === "DOWNLOADING_CLIENT" ? (
-                      <DownloadingStage progress={progress} reducedMotion={reduceMotion} />
-                    ) : null}
-                    {state === "DONE" ? <DoneStage result={installResult} nativeRuntime={nativeRuntime} /> : null}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            </div>
+                {state === "PATH_SELECT" && (
+                  <div className="mx-auto max-w-3xl">
+                    <p className="text-[10px] font-black tracking-[0.15em] text-[#b27be0] uppercase">{copy.pathStep}</p>
+                    <h1 className="font-display mt-3 text-[clamp(1.8rem,4vw,3.4rem)] leading-[1] font-black tracking-[-0.045em]">{copy.pathTitle}</h1>
+                    <p className="mt-4 max-w-2xl text-sm leading-6 text-[#afa4b8]">{copy.pathBody}</p>
+                    <label htmlFor="install-path" className="mt-8 block"><span className="mb-2 block text-[10px] font-black tracking-[0.13em] text-[#c9a6e3] uppercase">{copy.pathLabel}</span><span className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><input id="install-path" value={installationPath} onChange={(event) => { setInstallationPath(event.target.value); setPathTouched(true); setError(null); }} spellCheck={false} className="h-13 min-w-0 border border-white/[0.1] bg-black/30 px-4 text-sm text-white outline-none transition focus:border-[#a855f7]/65 focus:ring-2 focus:ring-[#7B2CBF]/35" /><button type="button" onClick={() => void browse()} disabled={isBrowsing} className="inline-flex min-h-13 cursor-pointer items-center justify-center gap-2 border border-[#9d5ce0]/32 bg-[#7B2CBF]/12 px-5 text-xs font-black text-[#e1c9f5] transition duration-200 hover:border-[#c084fc]/60 hover:bg-[#7B2CBF]/22 disabled:cursor-wait disabled:opacity-50"><ShadowGlyph name="folder" size={16} />{isBrowsing ? copy.browsing : copy.browse}</button></span></label>
+                    {pathTouched && pathCode && <p role="alert" className="mt-2 text-xs text-red-300">{copy.validation[pathCode]}</p>}
+                    <label className="mt-6 flex cursor-pointer items-start gap-3 border border-white/[0.08] bg-[#0F0B15]/78 p-4 transition hover:border-[#9d5ce0]/28"><input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} className="mt-0.5 size-5 cursor-pointer accent-[#7B2CBF]" /><span><strong className="block text-sm text-white">{copy.terms}</strong><small className="mt-1 block text-[10px] leading-4 text-[#95899f]">{copy.termsHint}</small></span></label>
+                  </div>
+                )}
 
-            <InstallerFooter
-              canInstall={canInstall}
-              languageLabel={selectedLanguage.nativeLabel}
-              nativeRuntime={nativeRuntime}
-              onBack={handleBack}
-              onFinish={handleFinish}
-              onInstall={startInstallation}
-              onNext={handleNext}
-              progress={progress.percentage}
-              state={state}
-            />
-          </section>
+                {state === "DOWNLOADING_CLIENT" && (
+                  <div className="mx-auto max-w-2xl py-8 text-center">
+                    <div className="relative mx-auto grid size-20 place-items-center rounded-full border border-[#a855f7]/28 bg-[#7B2CBF]/8 shadow-[0_0_45px_rgba(123,44,191,.24)]">
+                      <motion.span aria-hidden="true" animate={reducedMotion ? undefined : { rotate: 360 }} transition={{ duration: 1.15, repeat: Infinity, ease: "linear" }} className="absolute inset-[-1px] rounded-full border border-transparent border-t-[#d8b4fe] border-r-[#7B2CBF]" />
+                      <img src="/void-shadow-blade-logo.png" alt="" aria-hidden="true" className="size-14 object-contain" />
+                    </div>
+                    <h1 className="font-display mt-8 text-3xl font-black">{copy.downloadTitle}</h1>
+                    <p className="mt-3 text-sm text-[#afa4b8]">{copy.downloadBody}</p>
+                    <div className="mt-9 overflow-hidden border border-[#9d5ce0]/22 bg-black/35 p-1"><motion.div className="h-3 origin-left bg-[linear-gradient(90deg,#3b0d57,#7B2CBF,#5865f2)] shadow-[0_0_24px_rgba(123,44,191,.55)]" animate={{ scaleX: Math.max(0.01, progress.percentage / 100) }} transition={{ duration: reducedMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }} /></div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-[10px] text-[#978a9f]"><span>{statusText(copy, progress.percentage)}</span><strong className="text-white tabular-nums">{progress.percentage.toFixed(0)}%</strong></div>
+                    <p className="mt-2 text-[9px] text-[#716778]">{formatBytes(progress.downloadedBytes)} / {formatBytes(progress.totalBytes)} {copy.downloaded}</p>
+                  </div>
+                )}
+
+                {state === "DONE" && (
+                  <div className="mx-auto max-w-2xl py-8 text-center">
+                    <span className="mx-auto grid size-20 place-items-center border border-[#72f2a8]/28 bg-[#72f2a8]/[0.055] text-[#72f2a8] shadow-[0_0_34px_rgba(76,255,154,.14)] [clip-path:polygon(12%_0,100%_0,88%_100%,0_82%)]"><ShadowGlyph name="check" size={34} /></span>
+                    <h1 className="font-display mt-7 text-3xl font-black">{copy.completeTitle}</h1><p className="mt-3 text-sm text-[#afa4b8]">{copy.completeBody}</p>
+                    {result && <dl className="mx-auto mt-7 grid max-w-xl gap-3 text-left sm:grid-cols-2"><div className="rounded-xl border border-white/[0.08] bg-black/25 p-4"><dt className="text-[10px] font-black tracking-[0.11em] text-[#a99daf] uppercase">{copy.installedVersion}</dt><dd className="mt-2 text-xs font-bold text-white">{result.version}</dd></div><div className="rounded-xl border border-white/[0.08] bg-black/25 p-4"><dt className="text-[10px] font-black tracking-[0.11em] text-[#a99daf] uppercase">{copy.installedPath}</dt><dd className="mt-2 truncate text-xs font-bold text-white" title={result.installedExecutable}>{result.installedExecutable}</dd></div></dl>}
+                    {result?.shortcutWarning && <div role="status" className="mx-auto mt-4 flex max-w-xl items-start gap-2 rounded-xl border border-amber-300/18 bg-amber-300/[0.055] px-4 py-3 text-left text-xs leading-5 text-amber-100"><ShadowGlyph name="shield" size={16} className="mt-0.5 shrink-0" /><span>{result.shortcutWarning}</span></div>}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+
+            {(error || notice) && <div className={`mt-5 flex items-start gap-2 border px-4 py-3 text-xs ${error ? "border-red-400/22 bg-red-400/[0.055] text-red-200" : "border-amber-300/18 bg-amber-300/[0.045] text-amber-100"}`} role={error ? "alert" : "status"}><ShadowGlyph name={error ? "close" : "shield"} size={15} className="mt-0.5 shrink-0" /><span>{error ?? notice}</span></div>}
+          </div>
         </div>
-      </div>
 
-      <AnimatePresence>
-        {closeConfirmationOpen ? (
-          <CloseConfirmation
-            onCancel={() => setCloseConfirmationOpen(false)}
-            onConfirm={performClose}
-            reducedMotion={reduceMotion}
-          />
-        ) : null}
-      </AnimatePresence>
+        <footer className="flex min-h-20 shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] bg-[#0B0810]/88 px-5 sm:px-8">
+          <div>{state === "PATH_SELECT" && <button type="button" onClick={() => { setState("WELCOME"); setError(null); }} className="min-h-12 cursor-pointer border border-white/[0.09] bg-black/25 px-6 text-xs font-black text-[#b6aaba] transition hover:border-white/[0.18] hover:text-white">{copy.back}</button>}</div>
+          {state === "WELCOME" && <button type="button" onClick={() => setState("PATH_SELECT")} className="min-h-12 min-w-40 cursor-pointer border border-[#a855f7]/45 bg-[linear-gradient(110deg,#381049,#7B2CBF,#3547a1)] px-6 text-xs font-black tracking-[0.08em] text-white shadow-[0_0_28px_rgba(123,44,191,.24)] transition duration-200 hover:brightness-125 focus-visible:outline-2 focus-visible:outline-[#e1c9f5]">{copy.next}</button>}
+          {state === "PATH_SELECT" && <button type="button" onClick={() => void install()} disabled={!canInstall} className="min-h-12 cursor-pointer border border-[#a855f7]/45 bg-[linear-gradient(110deg,#381049,#7B2CBF,#3547a1)] px-6 text-xs font-black tracking-[0.06em] text-white shadow-[0_0_28px_rgba(123,44,191,.24)] transition duration-200 hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-35"><span className="inline-flex items-center gap-2"><ShadowGlyph name="download" size={16} />{copy.install}</span></button>}
+          {state === "DONE" && <button type="button" onClick={() => void finish()} className="min-h-12 cursor-pointer border border-[#a855f7]/45 bg-[linear-gradient(110deg,#381049,#7B2CBF,#3547a1)] px-7 text-xs font-black tracking-[0.08em] text-white shadow-[0_0_28px_rgba(123,44,191,.24)] transition duration-200 hover:brightness-125"><span className="inline-flex items-center gap-2"><ShadowGlyph name="launch" size={17} />{copy.finish}</span></button>}
+        </footer>
+      </section>
+
+      <AnimatePresence>{closeOpen && <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-5 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.section role="dialog" aria-modal="true" aria-labelledby="close-title" initial={{ opacity: 0, y: 14, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: .98 }} className="w-full max-w-md border border-red-400/22 bg-[#0F0B15]/98 p-6 shadow-[0_28px_90px_rgba(0,0,0,.8)]"><h2 id="close-title" className="font-display text-xl font-black">{copy.closeTitle}</h2><p className="mt-3 text-sm leading-6 text-[#afa4b8]">{copy.closeBody}</p><div className="mt-6 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => setCloseOpen(false)} className="min-h-12 cursor-pointer border border-white/[0.1] bg-black/25 px-4 text-xs font-bold transition hover:border-white/[0.2]">{copy.cancel}</button><button type="button" onClick={() => void close()} className="min-h-12 cursor-pointer border border-red-400/28 bg-red-500/10 px-4 text-xs font-bold text-red-100 transition hover:bg-red-500/18">{copy.close}</button></div></motion.section></motion.div>}</AnimatePresence>
     </main>
-  );
-}
-
-interface IInstallerAmbientProps {
-  reducedMotion: boolean;
-}
-
-function InstallerAmbient({ reducedMotion }: IInstallerAmbientProps) {
-  return (
-    <div className={styles.ambient} aria-hidden="true">
-      <div className={styles.ambientGrid} />
-      <motion.div
-        className={styles.ambientGlow}
-        initial={reducedMotion ? false : { x: -18, y: 12, opacity: 0.7 }}
-        animate={{ x: 0, y: 0, opacity: 1 }}
-        transition={{ duration: reducedMotion ? 0.01 : 1.1, ease: [0.22, 1, 0.36, 1] }}
-      />
-      <motion.div
-        className={styles.ambientBlue}
-        initial={reducedMotion ? false : { x: 20, y: -10, opacity: 0.6 }}
-        animate={{ x: 0, y: 0, opacity: 1 }}
-        transition={{ duration: reducedMotion ? 0.01 : 1.25, ease: [0.22, 1, 0.36, 1] }}
-      />
-      <div className={styles.slashA} />
-      <div className={styles.slashB} />
-    </div>
-  );
-}
-
-interface IInstallerTitlebarProps {
-  onClose: () => void;
-  onMinimize: () => Promise<void>;
-}
-
-function InstallerTitlebar({ onClose, onMinimize }: IInstallerTitlebarProps) {
-  return (
-    <div className={styles.titlebar} data-tauri-drag-region>
-      <div className={styles.titleBrand} data-tauri-drag-region>
-        <span className={styles.titleMark} aria-hidden="true">
-          <ShadowGlyph name="mark" size={17} />
-        </span>
-        <span className={styles.titleText} data-tauri-drag-region>Void Launcher Setup</span>
-        <span className={styles.titleMeta} data-tauri-drag-region>Bootstrap Node // 01</span>
-      </div>
-      <div className={styles.windowControls}>
-        <button type="button" className={styles.windowButton} onClick={() => void onMinimize()} aria-label="Minimize installer">
-          <ShadowGlyph name="minimize" size={16} />
-        </button>
-        <button type="button" className={styles.closeWindowButton} onClick={onClose} aria-label="Close installer">
-          <ShadowGlyph name="close" size={15} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function InstallerRail({ activeStepIndex }: { activeStepIndex: number }) {
-  return (
-    <aside className={styles.rail} aria-label="Installation progress">
-      <p className={styles.railKicker}>Shadow Garden Protocol</p>
-      <h2 className={styles.railTitle}>One small node awakens the entire Void.</h2>
-      <p className={styles.railBody}>
-        This lightweight Bootstrapper installs the daily-use client, verifies its payload, starts it once, and exits.
-      </p>
-      <ol className={styles.stepList}>
-        {STEPS.map((step, index) => {
-          const active = index === activeStepIndex;
-          const complete = index < activeStepIndex;
-          const nodeClass = active
-            ? `${styles.stepNode} ${styles.stepNodeActive}`
-            : complete
-              ? `${styles.stepNode} ${styles.stepNodeDone}`
-              : `${styles.stepNode} ${styles.stepNodeIdle}`;
-          const labelClass = active
-            ? `${styles.stepLabel} ${styles.stepLabelActive}`
-            : complete
-              ? `${styles.stepLabel} ${styles.stepLabelDone}`
-              : `${styles.stepLabel} ${styles.stepLabelIdle}`;
-
-          return (
-            <li key={step.id} className={styles.stepItem} aria-current={active ? "step" : undefined}>
-              <span className={nodeClass} aria-hidden="true">
-                {complete ? <ShadowGlyph name="check" size={13} /> : String(index + 1).padStart(2, "0")}
-              </span>
-              <span>
-                <strong className={labelClass}>{step.label}</strong>
-                <small className={styles.stepMeta}>{step.meta}</small>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    </aside>
-  );
-}
-
-interface IWelcomeStageProps {
-  language: InstallerLanguageCode;
-  onLanguageChange: (event: ChangeEvent<HTMLSelectElement>) => void;
-  reducedMotion: boolean;
-}
-
-function WelcomeStage({ language, onLanguageChange, reducedMotion }: IWelcomeStageProps) {
-  return (
-    <div className={styles.centeredStage}>
-      <motion.div
-        className={styles.sigil}
-        initial={reducedMotion ? false : { rotate: -3, scale: 0.94, opacity: 0 }}
-        animate={{ rotate: 0, scale: 1, opacity: 1 }}
-        transition={{ duration: reducedMotion ? 0.01 : 0.55, ease: [0.22, 1, 0.36, 1] }}
-        aria-hidden="true"
-      >
-        <span className={styles.sigilOuter} />
-        <span className={styles.sigilDiamond} />
-        <span className={styles.sigilCore}>
-          <ShadowGlyph name="mark" size={43} className="filter drop-shadow-[0_0_13px_currentColor]" />
-        </span>
-      </motion.div>
-      <p className={styles.kicker}>A Separate Deployment Application</p>
-      <h1 id="installer-stage-title" className={styles.stageTitle}>
-        Welcome to
-        <span className={styles.accentTitle}>Void Launcher</span>
-      </h1>
-      <p className={styles.stageBody}>
-        Configure the installation node. The Bootstrapper will deploy the full client and then leave the shadows.
-      </p>
-      <label className={styles.languageField} htmlFor="installer-language">
-        <span className={styles.label}>Installer language</span>
-        <span className={styles.selectWrap}>
-          <ShadowGlyph name="globe" size={17} className={styles.selectIcon} />
-          <select
-            id="installer-language"
-            value={language}
-            onChange={onLanguageChange}
-            className={styles.select}
-          >
-            {LANGUAGES.map((item) => (
-              <option key={item.code} value={item.code}>{item.nativeLabel} · {item.label}</option>
-            ))}
-          </select>
-          <ShadowGlyph name="arrow" size={14} className={styles.selectChevron} />
-        </span>
-      </label>
-    </div>
-  );
-}
-
-interface IPathSelectStageProps {
-  acceptedTerms: boolean;
-  installationPath: string;
-  isBrowsing: boolean;
-  pathError: string | null;
-  pathTouched: boolean;
-  onBrowse: () => Promise<void>;
-  onPathChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onTermsChange: (event: ChangeEvent<HTMLInputElement>) => void;
-}
-
-function PathSelectStage({
-  acceptedTerms,
-  installationPath,
-  isBrowsing,
-  pathError,
-  pathTouched,
-  onBrowse,
-  onPathChange,
-  onTermsChange,
-}: IPathSelectStageProps) {
-  const showPathError = pathTouched && pathError !== null;
-  const descriptionId = showPathError ? "installation-path-error" : "installation-path-help";
-
-  return (
-    <div>
-      <div className={styles.pathHeader}>
-        <p className={styles.kicker}>Local Deployment Matrix</p>
-        <h1 id="installer-stage-title" className={styles.stageTitle}>Choose the client installation path.</h1>
-        <p className={styles.stageBody}>
-          The full Void Launcher executable and its managed runtime will be installed in this directory.
-        </p>
-      </div>
-      <label htmlFor="installation-path" className={styles.label}>Installation directory</label>
-      <div className={styles.pathRow}>
-        <div className={styles.inputWrap}>
-          <ShadowGlyph name="folder" size={17} className={styles.inputIcon} />
-          <input
-            id="installation-path"
-            type="text"
-            className={styles.pathInput}
-            value={installationPath}
-            onChange={onPathChange}
-            maxLength={260}
-            spellCheck={false}
-            autoComplete="off"
-            aria-describedby={descriptionId}
-            aria-invalid={showPathError}
-          />
-        </div>
-        <button
-          type="button"
-          className={styles.browseButton}
-          onClick={() => void onBrowse()}
-          disabled={isBrowsing}
-        >
-          <ShadowGlyph name="folder" size={16} />
-          {isBrowsing ? "Opening..." : "Browse"}
-        </button>
-      </div>
-      <p id={descriptionId} className={showPathError ? styles.error : styles.helper} role={showPathError ? "alert" : undefined}>
-        {showPathError
-          ? pathError
-          : "Use an absolute Windows path. The native build opens the operating system folder picker."}
-      </p>
-
-      <label className={styles.agreement}>
-        <input
-          type="checkbox"
-          checked={acceptedTerms}
-          onChange={onTermsChange}
-          className="peer sr-only"
-          aria-describedby="terms-description"
-        />
-        <span className={styles.checkbox} aria-hidden="true">
-          <ShadowGlyph name="check" size={14} />
-        </span>
-        <span>
-          <strong className={styles.agreementTitle}>I accept the Terms of Service and Privacy Policy</strong>
-          <small id="terms-description" className={styles.agreementBody}>
-            Required before the Bootstrapper can download and write the Void Client payload.
-          </small>
-        </span>
-      </label>
-    </div>
-  );
-}
-
-interface IDownloadingStageProps {
-  progress: IInstallerProgress;
-  reducedMotion: boolean;
-}
-
-function DownloadingStage({ progress, reducedMotion }: IDownloadingStageProps) {
-  const totalBytes = progress.totalBytes || PREVIEW_TOTAL_BYTES;
-  const progressScale = Math.max(0, Math.min(1, progress.percentage / 100));
-
-  return (
-    <div className={styles.centeredStage}>
-      <div className={styles.progressSigil} aria-hidden="true">
-        <motion.span
-          className={styles.progressOrbit}
-          animate={reducedMotion ? undefined : { rotate: 360 }}
-          transition={{ duration: 5.2, repeat: Infinity, ease: "linear" }}
-        />
-        <span className={styles.progressCore}>
-          <ShadowGlyph name="download" size={29} className="filter drop-shadow-[0_0_11px_currentColor]" />
-        </span>
-      </div>
-      <p className={styles.kicker}>Secure Payload Transfer</p>
-      <h1 id="installer-stage-title" className={styles.stageTitle}>Downloading Void Client payload...</h1>
-      <p className={styles.stageBody}>The Bootstrapper is assembling and verifying the separate daily-use application.</p>
-      <div
-        className="w-full"
-        role="progressbar"
-        aria-label="Void Client download progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(progress.percentage)}
-        aria-valuetext={`${Math.round(progress.percentage)} percent. ${progress.status}`}
-      >
-        <div className={styles.progressShell}>
-          <motion.div
-            className={styles.progressBar}
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: progressScale }}
-            transition={{ duration: reducedMotion ? 0.01 : 0.14, ease: "linear" }}
-          />
-        </div>
-        <div className={styles.progressMeta}>
-          <span className={styles.progressStatus} aria-live="polite">{progress.status}</span>
-          <span className={styles.progressValue}>{Math.round(progress.percentage).toString().padStart(3, "0")}%</span>
-        </div>
-        <div className={styles.transferMeta}>
-          <span className={styles.transferCell}>
-            <small className={styles.transferLabel}>Transferred</small>
-            <strong className={styles.transferValue}>{formatBytes(progress.downloadedBytes)}</strong>
-          </span>
-          <span className={styles.transferCell}>
-            <small className={styles.transferLabel}>Payload size</small>
-            <strong className={styles.transferValue}>{formatBytes(totalBytes)}</strong>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface IDoneStageProps {
-  nativeRuntime: boolean;
-  result: IInstallClientResult | null;
-}
-
-function DoneStage({ nativeRuntime, result }: IDoneStageProps) {
-  return (
-    <div className={styles.centeredStage}>
-      <div className={styles.doneBadge} aria-hidden="true">
-        <ShadowGlyph name="check" size={47} className="filter drop-shadow-[0_0_13px_currentColor]" />
-      </div>
-      <p className={`${styles.kicker} mt-7 text-[#58ed9d]`}>{nativeRuntime ? "Deployment Complete" : "Preview Complete"}</p>
-      <h1 id="installer-stage-title" className={styles.stageTitle}>
-        {nativeRuntime ? "The Void Client is ready." : "The preview sequence is complete."}
-      </h1>
-      <p className={styles.stageBody}>
-        {nativeRuntime
-          ? "Finish to launch the separate Void Client application. This Bootstrapper will close immediately afterward."
-          : "No executable or directory was created. Use the native Bootstrapper to perform a real installation."}
-      </p>
-      {result ? (
-        <>
-          <dl className={styles.resultCard}>
-            <div className={styles.resultRow}>
-              <dt className={styles.resultLabel}>Client version</dt>
-              <dd className={styles.resultValue}>{result.version}</dd>
-            </div>
-            <div className={styles.resultRow}>
-              <dt className={styles.resultLabel}>Executable</dt>
-              <dd className={styles.resultValue}>{result.installedExecutable}</dd>
-            </div>
-          </dl>
-          {result.shortcutWarning ? (
-            <p className="mt-4 max-w-2xl text-center text-xs leading-5 text-[#f4bf75]" role="status">
-              {result.shortcutWarning}
-            </p>
-          ) : null}
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-interface IInstallerFooterProps {
-  canInstall: boolean;
-  languageLabel: string;
-  nativeRuntime: boolean;
-  onBack: () => void;
-  onFinish: () => Promise<void>;
-  onInstall: () => Promise<void>;
-  onNext: () => void;
-  progress: number;
-  state: InstallerState;
-}
-
-function InstallerFooter({
-  canInstall,
-  languageLabel,
-  nativeRuntime,
-  onBack,
-  onFinish,
-  onInstall,
-  onNext,
-  progress,
-  state,
-}: IInstallerFooterProps) {
-  return (
-    <footer className={styles.footer}>
-      <div className={styles.footerStatus} aria-live="polite">
-        <span className={styles.footerDot} aria-hidden="true" />
-        {state === "DOWNLOADING_CLIENT"
-          ? `Core transfer ${Math.round(progress)}%`
-          : `${languageLabel} · ${nativeRuntime ? "Native node" : "Preview node"}`}
-      </div>
-      <div className={styles.actions}>
-        {state === "PATH_SELECT" ? (
-          <button type="button" className={styles.secondaryButton} onClick={onBack}>Back</button>
-        ) : null}
-        {state === "WELCOME" ? (
-          <button type="button" className={styles.primaryButton} onClick={onNext}>
-            Next
-            <ShadowGlyph name="arrow" size={16} className="transition-transform duration-200 group-hover:translate-x-1" />
-          </button>
-        ) : null}
-        {state === "PATH_SELECT" ? (
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => void onInstall()}
-            disabled={!canInstall}
-            title={!canInstall ? "Choose a valid path and accept the Terms of Service to continue." : undefined}
-          >
-            {nativeRuntime ? "Install Void Client" : "Preview installation"}
-            <ShadowGlyph name="download" size={16} />
-          </button>
-        ) : null}
-        {state === "DONE" ? (
-          <button type="button" className={styles.primaryButton} onClick={() => void onFinish()}>
-            Awaken Void
-            <ShadowGlyph name="launch" size={16} className="transition-transform duration-200 group-hover:translate-x-1" />
-          </button>
-        ) : null}
-      </div>
-    </footer>
-  );
-}
-
-interface ICloseConfirmationProps {
-  onCancel: () => void;
-  onConfirm: () => Promise<void>;
-  reducedMotion: boolean;
-}
-
-function CloseConfirmation({ onCancel, onConfirm, reducedMotion }: ICloseConfirmationProps) {
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    cancelButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
-
-  return (
-    <motion.div
-      className={styles.confirmBackdrop}
-      initial={reducedMotion ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: reducedMotion ? 0.01 : 0.18 }}
-      role="presentation"
-    >
-      <motion.section
-        className={styles.confirmCard}
-        initial={reducedMotion ? false : { opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.98, y: 8 }}
-        transition={{ duration: reducedMotion ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="close-confirmation-title"
-        aria-describedby="close-confirmation-description"
-      >
-        <p className={styles.kicker}>Transfer Interruption</p>
-        <h2 id="close-confirmation-title" className={styles.confirmTitle}>Abort the client download?</h2>
-        <p id="close-confirmation-description" className={styles.confirmBody}>
-          Closing now interrupts the active transfer. The native backend is responsible for removing incomplete temporary files.
-        </p>
-        <div className={styles.confirmActions}>
-          <button ref={cancelButtonRef} type="button" className={styles.secondaryButton} onClick={onCancel}>Keep downloading</button>
-          <button type="button" className={styles.dangerButton} onClick={() => void onConfirm()}>Abort &amp; close</button>
-        </div>
-      </motion.section>
-    </motion.div>
   );
 }
 

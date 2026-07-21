@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useAccountStore } from "@/stores/account";
 import { useLauncherInstance } from "../../../hooks/useLauncherInstance";
+import { CLIENT_COPY } from "../../../i18n";
+import { useVoidClientStore } from "../../../stores/voidClient.store";
 import type { IFriendEntry, ITelemetrySnapshot } from "../../../types";
+import type { Instance } from "@/types";
 import { ShadowGlyph } from "../../../components/ShadowGlyph";
 import { TelemetryPanel } from "./TelemetryPanel";
 import { voidClientStyles } from "../void-client.styles";
@@ -20,9 +23,12 @@ const EMPTY_STREAK: IPlayStreakState = { days: 0, lastPlayedDate: null };
 export function DashboardView({ snapshot }: { snapshot: ITelemetrySnapshot }) {
   const [friendModalOpen, setFriendModalOpen] = useState(false);
   const [friendsList, setFriendsList] = useState<IFriendEntry[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [playStreak, recordLaunchDay] = usePlayStreak();
-  const { profile, instance, isLoadingInstances, launchMutation } = useLauncherInstance();
+  const { profile, instance, instances, isLoadingInstances, launchMutation } = useLauncherInstance(selectedInstanceId);
   const login = useAccountStore((state) => state.login);
+  const language = useVoidClientStore((state) => state.language);
+  const copy = CLIENT_COPY[language];
   const reducedMotion = useReducedMotion();
 
   const launch = useCallback(() => launchMutation.mutate(), [launchMutation]);
@@ -39,19 +45,26 @@ export function DashboardView({ snapshot }: { snapshot: ITelemetrySnapshot }) {
     if (launchMutation.isSuccess) recordLaunchDay();
   }, [launchMutation.isSuccess, launchMutation.submittedAt, recordLaunchDay]);
 
+  useEffect(() => {
+    if (selectedInstanceId && !instances.some((candidate) => candidate.id === selectedInstanceId)) {
+      setSelectedInstanceId(null);
+    }
+  }, [instances, selectedInstanceId]);
+
   const launchDisabled = launchMutation.isPending || isLoadingInstances || !instance || !profile;
+  const launcherReady = Boolean(profile && instance && !isLoadingInstances);
 
   return (
     <div className={voidClientStyles.page}>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className={voidClientStyles.sectionKicker}>Command center // operational</p>
-          <h1 className={voidClientStyles.pageTitle}>Welcome to the Void{profile ? `, ${profile.name}` : ""}</h1>
+          <p className={voidClientStyles.sectionKicker}>Void Launcher</p>
+          <h1 className={voidClientStyles.pageTitle}>{copy.welcome}{profile ? `, ${profile.name}` : ""}</h1>
           <p className="mt-2 text-sm text-[#a79bad]">Step beyond the ordinary client.</p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-[#4cff9a]/20 bg-[#00e676]/[0.05] px-3.5 py-2 text-[9px] font-black tracking-[0.13em] text-[#4cff9a] uppercase">
-          <motion.span animate={reducedMotion ? undefined : { opacity: [1, 0.35, 1] }} transition={{ duration: 1.8, repeat: Infinity }} className="size-1.5 rounded-full bg-[#4cff9a]" />
-          Native services online
+        <div className={`flex items-center gap-2 rounded-full border px-3.5 py-2 text-[10px] font-black tracking-[0.12em] uppercase ${launcherReady ? "border-[#4cff9a]/20 bg-[#00e676]/[0.05] text-[#4cff9a]" : "border-amber-300/18 bg-amber-300/[0.045] text-amber-200"}`}>
+          <motion.span animate={reducedMotion ? undefined : { opacity: [1, 0.35, 1] }} transition={{ duration: 1.8, repeat: Infinity }} className={`size-1.5 rounded-full ${launcherReady ? "bg-[#4cff9a]" : "bg-amber-300"}`} />
+          {launcherReady ? "Ready to launch" : profile ? "Select an instance" : "Sign in required"}
         </div>
       </header>
 
@@ -62,9 +75,9 @@ export function DashboardView({ snapshot }: { snapshot: ITelemetrySnapshot }) {
           <div className="pointer-events-none absolute right-[15%] bottom-[12%] size-60 rounded-full border border-[#a855f7]/15 shadow-[0_0_80px_rgba(123,44,191,0.2),inset_0_0_80px_rgba(123,44,191,0.08)]" />
           <div className="relative z-10 flex h-full max-w-xl flex-col justify-between">
             <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#7B2CBF]/28 bg-[#7B2CBF]/10 px-3 py-1.5 text-[9px] font-black tracking-[0.14em] text-[#d8b4fe] uppercase"><ShadowGlyph name="spark" size={13} /> Shadow protocol 7.2</span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#7B2CBF]/28 bg-[#7B2CBF]/10 px-3 py-1.5 text-[10px] font-black tracking-[0.13em] text-[#d8b4fe] uppercase"><ShadowGlyph name="spark" size={13} /> Void Launcher</span>
               <h2 className="font-display mt-5 text-[clamp(2rem,5vw,4.3rem)] leading-[0.92] font-black tracking-[-0.065em]">STEP BEYOND<br /><span className="bg-[linear-gradient(90deg,#d8b4fe,#a855f7_48%,#86a8ff)] bg-clip-text text-transparent">THE ORDINARY</span></h2>
-              <p className="mt-4 max-w-md text-sm leading-6 text-[#a79bad]">A performance-tuned command layer forged for verified players who operate from the shadows.</p>
+              <p className="mt-4 max-w-md text-sm leading-6 text-[#a79bad]">A fast, focused Minecraft launcher for verified players.</p>
             </div>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -76,7 +89,7 @@ export function DashboardView({ snapshot }: { snapshot: ITelemetrySnapshot }) {
               ) : (
                 <button type="button" onClick={signIn} className={`${voidClientStyles.primaryButton} min-h-14 min-w-64 px-6`}><ShadowGlyph name="account" size={19} /> SIGN IN TO LAUNCH</button>
               )}
-              <span className="text-[10px] leading-4 text-[#8f8199]">{instance ? `${instance.name} · ${instance.gameVersion} · ${instance.loader}` : "Create an instance before launch"}</span>
+              <span className="text-[11px] leading-5 text-[#9f92a8]">{instance ? `${instance.name} · ${instance.gameVersion} · ${instance.loader}` : "Create an instance before launch"}</span>
             </div>
             {launchMutation.isError && <p role="alert" className="mt-3 max-w-xl rounded-xl border border-red-400/15 bg-red-400/[0.055] px-3 py-2 text-xs text-red-300">{String(launchMutation.error)}</p>}
             {launchMutation.isSuccess && <p role="status" className="mt-3 text-xs text-[#4cff9a]">Launch command accepted. Minecraft is starting.</p>}
@@ -84,28 +97,71 @@ export function DashboardView({ snapshot }: { snapshot: ITelemetrySnapshot }) {
         </section>
 
         <div className="grid gap-5">
-          <ServerStatus ping={snapshot.ping} />
+          <InstanceStatus name={instance?.name} version={instance?.gameVersion} loader={instance?.loader} signedIn={Boolean(profile)} />
           <FriendsPanel friendsList={friendsList} onAddFriend={openFriendModal} />
         </div>
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
         <TelemetryPanel snapshot={snapshot} />
-        <DailyProtocol streak={playStreak} />
+        <PlayStreakCard streak={playStreak} />
       </div>
+
+      <InstanceQuickSelect
+        instances={instances}
+        activeInstanceId={instance?.id ?? null}
+        loading={isLoadingInstances}
+        onSelect={setSelectedInstanceId}
+      />
 
       <AnimatePresence>{friendModalOpen && <FriendModal onClose={closeFriendModal} onRequested={recordFriendRequest} />}</AnimatePresence>
     </div>
   );
 }
 
-function ServerStatus({ ping }: { ping: number }) {
+function InstanceQuickSelect({ instances, activeInstanceId, loading, onSelect }: { instances: Instance[]; activeInstanceId: string | null; loading: boolean; onSelect: (instanceId: string) => void }) {
+  const visibleInstances = instances.slice(0, 7);
+  return (
+    <section className={`${voidClientStyles.glassCard} mt-5 p-5`}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><p className={voidClientStyles.sectionKicker}>Quick launch</p><h2 className="font-display mt-1 text-lg font-black">Your instances</h2></div>
+        <span className="text-[11px] text-[#91859b]">{loading ? "Loading…" : `${instances.length} available`}</span>
+      </div>
+      {visibleInstances.length > 0 ? (
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-7">
+          {visibleInstances.map((candidate) => {
+            const active = candidate.id === activeInstanceId;
+            return (
+              <button
+                key={candidate.id}
+                type="button"
+                onClick={() => onSelect(candidate.id)}
+                aria-pressed={active}
+                className={`min-h-16 cursor-pointer rounded-xl border p-2.5 text-left transition ${active ? "border-[#c084fc]/58 bg-[#7B2CBF]/18 text-white shadow-[0_0_20px_rgba(123,44,191,.14)]" : "border-white/[0.08] bg-black/22 text-[#a79bad] hover:border-[#9d5ce0]/35 hover:text-white"}`}
+              >
+                <span className="block truncate text-[11px] font-black">{candidate.name}</span>
+                <span className="mt-1 block truncate text-[10px] text-[#8f8199]">{candidate.gameVersion} · {candidate.loader}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-dashed border-white/[0.1] bg-black/20 px-4 py-5 text-center">
+          <p className="text-xs font-bold text-white">No instances yet</p>
+          <p className="mt-1 text-[10px] text-[#9f92a8]">Create one in Instances to enable quick launch.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InstanceStatus({ name, version, loader, signedIn }: { name?: string; version?: string; loader?: string; signedIn: boolean }) {
   return (
     <section className={`${voidClientStyles.glassCard} p-5`}>
-      <div className="flex items-center justify-between"><span className="grid size-10 place-items-center rounded-xl border border-[#4cff9a]/18 bg-[#00e676]/[0.05] text-[#4cff9a]"><ShadowGlyph name="server" size={19} /></span><span className="size-2 rounded-full bg-[#4cff9a] shadow-[0_0_14px_currentColor]" /></div>
-      <p className="mt-4 text-[9px] font-black tracking-[0.17em] text-[#8f8199] uppercase">Live server status</p>
-      <h2 className="font-display mt-1 text-base font-black text-white">Hypixel Network</h2>
-      <div className="mt-4 flex items-center justify-between text-[10px] text-[#a79bad]"><span>EU Central</span><strong className="text-[#4cff9a]">{ping} ms</strong></div>
+      <div className="flex items-center justify-between"><span className="grid size-10 place-items-center rounded-xl border border-[#9d5ce0]/24 bg-[#7B2CBF]/10 text-[#d8b4fe]"><ShadowGlyph name="vault" size={19} /></span><span className={`size-2 rounded-full ${name && signedIn ? "bg-[#4cff9a] shadow-[0_0_14px_currentColor]" : "bg-amber-300"}`} /></div>
+      <p className="mt-4 text-[9px] font-black tracking-[0.15em] text-[#9a8da3] uppercase">Selected instance</p>
+      <h2 className="font-display mt-1 truncate text-base font-black text-white">{name ?? "No instance selected"}</h2>
+      <div className="mt-4 flex items-center justify-between text-[10px] text-[#a79bad]"><span>{version ?? "Create a profile"}</span><strong className={name && signedIn ? "text-[#4cff9a]" : "text-amber-200"}>{name ? loader : signedIn ? "Missing" : "Sign in"}</strong></div>
     </section>
   );
 }
@@ -114,7 +170,7 @@ function FriendsPanel({ friendsList, onAddFriend }: { friendsList: IFriendEntry[
   return (
     <section className={`${voidClientStyles.glassCard} p-5`}>
       <div className="flex items-center justify-between">
-        <div><p className={voidClientStyles.sectionKicker}>Shadow network</p><h2 className="font-display mt-1 text-base font-black">Friends Online</h2></div>
+        <div><p className={voidClientStyles.sectionKicker}>Friends</p><h2 className="font-display mt-1 text-base font-black">Friends Online</h2></div>
         <button type="button" onClick={onAddFriend} className={`grid size-11 cursor-pointer place-items-center rounded-xl border border-[#7B2CBF]/25 bg-[#7B2CBF]/10 text-[#d8b4fe] transition hover:bg-[#7B2CBF]/20 ${voidClientStyles.focusRing}`} aria-label="Add a friend"><ShadowGlyph name="addFriend" size={17} /></button>
       </div>
       <div className="mt-4 space-y-2.5">
@@ -130,10 +186,10 @@ function FriendsPanel({ friendsList, onAddFriend }: { friendsList: IFriendEntry[
   );
 }
 
-function DailyProtocol({ streak }: { streak: IPlayStreakState }) {
+function PlayStreakCard({ streak }: { streak: IPlayStreakState }) {
   return (
     <section className={`${voidClientStyles.glassCard} p-5`}>
-      <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl border border-orange-300/18 bg-orange-400/[0.055] text-orange-300"><ShadowGlyph name="spark" size={19} /></span><div><p className={voidClientStyles.sectionKicker}>Play streak</p><h2 className="font-display mt-1 text-base font-black">{streak.days} Day Ascension</h2></div></div>
+      <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl border border-orange-300/18 bg-orange-400/[0.055] text-orange-300"><ShadowGlyph name="spark" size={19} /></span><div><p className={voidClientStyles.sectionKicker}>Play streak</p><h2 className="font-display mt-1 text-base font-black">{streak.days} Day Streak</h2></div></div>
       <div className="mt-5 grid grid-cols-7 gap-1.5">
         {[1, 2, 3, 4, 5, 6, 7].map((day) => <motion.span key={day} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: day * 0.045 }} className={`h-10 origin-bottom rounded-lg border ${day <= Math.min(streak.days, 7) ? "border-[#d8b4fe]/35 bg-[#7B2CBF]/30 shadow-[0_0_18px_rgba(123,44,191,0.2)]" : "border-white/[0.06] bg-white/[0.035]"}`} />)}
       </div>

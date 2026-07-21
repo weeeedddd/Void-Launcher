@@ -2,7 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_JVM_ARGUMENTS } from "../constants";
 import type {
+  AuthenticationPersistence,
+  ClientLanguageCode,
   CrashLogDestination,
+  GarbageCollectorPreset,
+  ILaunchLogEntry,
   LauncherVisibility,
   LogRetention,
   MissionVisibility,
@@ -15,9 +19,14 @@ import type {
 
 export interface IVoidClientUiState {
   activeView: VoidView;
+  language: ClientLanguageCode;
+  authPersistence: AuthenticationPersistence;
   settingsSection: SettingsSection;
   ramGb: number;
   jvmArguments: string;
+  garbageCollector: GarbageCollectorPreset;
+  highThreadPriority: boolean;
+  largePages: boolean;
   animatedRunes: boolean;
   minimizeOnLaunch: boolean;
   autoConnectVoice: boolean;
@@ -42,10 +51,17 @@ export interface IVoidClientUiState {
   crashLogDestination: CrashLogDestination;
   crashScreenOpen: boolean;
   launchLoadUntil: number;
+  launchOverlayOpen: boolean;
+  missionControlOpen: boolean;
+  launchInstanceName: string;
+  launchLogs: ILaunchLogEntry[];
   setActiveView: (view: VoidView) => void;
+  setLanguage: (language: ClientLanguageCode) => void;
+  setAuthPersistence: (persistence: AuthenticationPersistence) => void;
   setSettingsSection: (section: SettingsSection) => void;
   setRamGb: (ramGb: number) => void;
   setJvmArguments: (jvmArguments: string) => void;
+  setGarbageCollector: (preset: GarbageCollectorPreset) => void;
   setResolutionWidth: (width: number) => void;
   setResolutionHeight: (height: number) => void;
   setLauncherVisibility: (visibility: LauncherVisibility) => void;
@@ -56,12 +72,19 @@ export interface IVoidClientUiState {
   setCrashLogDestination: (destination: CrashLogDestination) => void;
   setCrashScreenOpen: (open: boolean) => void;
   signalLaunchLoad: (durationMs: number) => void;
+  beginLaunch: (instanceName: string) => void;
+  appendLaunchLog: (entry: Omit<ILaunchLogEntry, "id">) => void;
+  finishLaunch: (message?: string, failed?: boolean) => void;
+  setMissionControlOpen: (open: boolean) => void;
+  clearLaunchLogs: () => void;
   toggleAnimatedRunes: () => void;
   toggleMinimizeOnLaunch: () => void;
   toggleAutoConnectVoice: () => void;
   toggleBloom: () => void;
   toggleLowLatencyMode: () => void;
   toggleNativeMemoryGuard: () => void;
+  toggleHighThreadPriority: () => void;
+  toggleLargePages: () => void;
   toggleFullscreen: () => void;
   toggleLockAspectRatio: () => void;
   toggleIgnoreForgeProcessorHash: () => void;
@@ -90,9 +113,14 @@ const DEFAULT_NOTIFICATIONS: Record<NotificationKind, boolean> = {
 };
 
 const SETTINGS_DEFAULTS = {
+  language: "en" as ClientLanguageCode,
+  authPersistence: "one-month" as AuthenticationPersistence,
   settingsSection: "general" as SettingsSection,
-  ramGb: 12,
+  ramGb: 6,
   jvmArguments: DEFAULT_JVM_ARGUMENTS,
+  garbageCollector: "aikar-g1" as GarbageCollectorPreset,
+  highThreadPriority: true,
+  largePages: false,
   animatedRunes: true,
   minimizeOnLaunch: true,
   autoConnectVoice: false,
@@ -109,7 +137,7 @@ const SETTINGS_DEFAULTS = {
   logRetention: "thirty-days" as LogRetention,
   notificationPosition: "bottom-right" as NotificationPosition,
   notifications: DEFAULT_NOTIFICATIONS,
-  discordRpcEnabled: true,
+  discordRpcEnabled: false,
   hideRpcWhenIdle: false,
   rpcLanguage: "english" as RpcLanguage,
   analyticsEnabled: false,
@@ -128,6 +156,10 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         activeView: state.activeView,
         crashScreenOpen: false,
         launchLoadUntil: 0,
+        launchOverlayOpen: false,
+        missionControlOpen: false,
+        launchInstanceName: "",
+        launchLogs: [],
         notifications: { ...DEFAULT_NOTIFICATIONS },
       }));
 
@@ -137,10 +169,17 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         notifications: { ...DEFAULT_NOTIFICATIONS },
         crashScreenOpen: false,
         launchLoadUntil: 0,
+        launchOverlayOpen: false,
+        missionControlOpen: false,
+        launchInstanceName: "",
+        launchLogs: [],
         setActiveView: (activeView) => set({ activeView }),
+        setLanguage: (language) => set({ language }),
+        setAuthPersistence: (authPersistence) => set({ authPersistence }),
         setSettingsSection: (settingsSection) => set({ settingsSection }),
         setRamGb: (ramGb) => set({ ramGb: Math.min(32, Math.max(2, Math.round(ramGb))) }),
         setJvmArguments: (jvmArguments) => set({ jvmArguments: jvmArguments.slice(0, 2_000) }),
+        setGarbageCollector: (garbageCollector) => set({ garbageCollector }),
         setResolutionWidth: (value) => set((state) => {
           const resolutionWidth = clampResolution(value, 800, 7_680);
           return state.lockAspectRatio
@@ -163,12 +202,43 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         signalLaunchLoad: (durationMs) => set((state) => ({
           launchLoadUntil: Math.max(state.launchLoadUntil, Date.now() + Math.max(0, durationMs)),
         })),
+        beginLaunch: (launchInstanceName) => set({
+          launchOverlayOpen: true,
+          missionControlOpen: true,
+          launchInstanceName,
+          launchLogs: [{
+            id: `ui-${Date.now()}-queued`,
+            timestamp: new Date().toISOString(),
+            level: "info",
+            phase: "queued",
+            message: `Preparing ${launchInstanceName} for launch.`,
+          }],
+        }),
+        appendLaunchLog: (entry) => set((state) => ({
+          missionControlOpen: true,
+          launchLogs: [...state.launchLogs, { ...entry, id: `${entry.timestamp}-${state.launchLogs.length}` }].slice(-160),
+        })),
+        finishLaunch: (message, failed = false) => set((state) => ({
+          launchOverlayOpen: false,
+          missionControlOpen: true,
+          launchLogs: message ? [...state.launchLogs, {
+            id: `ui-${Date.now()}-finished`,
+            timestamp: new Date().toISOString(),
+            level: failed ? "error" as const : "success" as const,
+            phase: failed ? "failed" : "running",
+            message,
+          }].slice(-160) : state.launchLogs,
+        })),
+        setMissionControlOpen: (missionControlOpen) => set({ missionControlOpen }),
+        clearLaunchLogs: () => set({ launchLogs: [] }),
         toggleAnimatedRunes: () => set((state) => ({ animatedRunes: !state.animatedRunes })),
         toggleMinimizeOnLaunch: () => set((state) => ({ minimizeOnLaunch: !state.minimizeOnLaunch })),
         toggleAutoConnectVoice: () => set((state) => ({ autoConnectVoice: !state.autoConnectVoice })),
         toggleBloom: () => set((state) => ({ bloom: !state.bloom })),
         toggleLowLatencyMode: () => set((state) => ({ lowLatencyMode: !state.lowLatencyMode })),
         toggleNativeMemoryGuard: () => set((state) => ({ nativeMemoryGuard: !state.nativeMemoryGuard })),
+        toggleHighThreadPriority: () => set((state) => ({ highThreadPriority: !state.highThreadPriority })),
+        toggleLargePages: () => set((state) => ({ largePages: !state.largePages })),
         toggleFullscreen: () => set((state) => ({ fullscreen: !state.fullscreen })),
         toggleLockAspectRatio: () => set((state) => ({
           lockAspectRatio: !state.lockAspectRatio,
@@ -188,13 +258,18 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
     },
     {
       name: "void-client-ui",
-      version: 2,
+      version: 3,
       migrate: (persistedState) => {
         const previous = persistedState as Partial<IVoidClientUiState>;
         return {
           settingsSection: previous.settingsSection ?? SETTINGS_DEFAULTS.settingsSection,
+          language: previous.language ?? SETTINGS_DEFAULTS.language,
+          authPersistence: previous.authPersistence ?? SETTINGS_DEFAULTS.authPersistence,
           ramGb: previous.ramGb ?? SETTINGS_DEFAULTS.ramGb,
           jvmArguments: previous.jvmArguments ?? SETTINGS_DEFAULTS.jvmArguments,
+          garbageCollector: previous.garbageCollector ?? SETTINGS_DEFAULTS.garbageCollector,
+          highThreadPriority: previous.highThreadPriority ?? SETTINGS_DEFAULTS.highThreadPriority,
+          largePages: previous.largePages ?? SETTINGS_DEFAULTS.largePages,
           animatedRunes: previous.animatedRunes ?? SETTINGS_DEFAULTS.animatedRunes,
           minimizeOnLaunch: previous.minimizeOnLaunch ?? SETTINGS_DEFAULTS.minimizeOnLaunch,
           autoConnectVoice: previous.autoConnectVoice ?? SETTINGS_DEFAULTS.autoConnectVoice,
@@ -221,8 +296,13 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
       },
       partialize: (state) => ({
         settingsSection: state.settingsSection,
+        language: state.language,
+        authPersistence: state.authPersistence,
         ramGb: state.ramGb,
         jvmArguments: state.jvmArguments,
+        garbageCollector: state.garbageCollector,
+        highThreadPriority: state.highThreadPriority,
+        largePages: state.largePages,
         animatedRunes: state.animatedRunes,
         minimizeOnLaunch: state.minimizeOnLaunch,
         autoConnectVoice: state.autoConnectVoice,

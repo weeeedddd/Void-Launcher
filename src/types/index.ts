@@ -80,6 +80,14 @@ export interface InstalledMod {
   enabled: boolean;
 }
 
+export interface InstalledShader {
+  platform: Platform;
+  projectId: string;
+  versionId: string;
+  name: string;
+  fileName: string;
+}
+
 /** A game instance (= one modpack/profile). */
 export interface Instance {
   id: string;
@@ -180,6 +188,22 @@ export interface JavaProgress {
 /** Only exposes whether a CurseForge key exists; never returns the key itself. */
 export interface SettingsStatus {
   curseforgeConfigured: boolean;
+  authPersistence: "one-week" | "two-weeks" | "one-month" | "always-ask";
+}
+
+export interface LauncherLogEvent {
+  timestamp: string;
+  level: "info" | "success" | "warning" | "error";
+  phase: string;
+  message: string;
+  instanceId?: string;
+}
+
+export interface GameVideoSettings {
+  renderDistance: number;
+  simulationDistance: number;
+  graphicsMode: "fast" | "fancy" | "fabulous";
+  maxFps: number;
 }
 
 export interface DiscordRpcStatus {

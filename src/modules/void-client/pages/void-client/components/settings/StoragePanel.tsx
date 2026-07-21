@@ -97,7 +97,7 @@ export function StoragePanel() {
         </div>
 
         <div aria-live="polite" className="mt-3 min-h-4 text-[10px]">
-          {storageQuery.isError && <span className="text-amber-200">Native storage telemetry is available in the Windows launcher build.</span>}
+          {storageQuery.isError && <span className="text-amber-200">Storage details are available in the Windows launcher build.</span>}
           {openMutation.isError && <span className="text-red-300">{String(openMutation.error)}</span>}
           {clearMutation.isSuccess && <span className="text-[#4cff9a]">The selected managed directory was cleared safely.</span>}
           {clearMutation.isError && <span className="text-red-300">{String(clearMutation.error)}</span>}

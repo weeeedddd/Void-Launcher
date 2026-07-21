@@ -1,4 +1,21 @@
-export type VoidView = "dashboard" | "deployments" | "mods" | "telemetry" | "settings" | "chronicle";
+export type VoidView = "dashboard" | "deployments" | "mods" | "telemetry" | "settings" | "chronicle" | "systems";
+
+export type ClientLanguageCode = "en" | "de" | "ru" | "ja" | "ko";
+
+export type AuthenticationPersistence = "one-week" | "two-weeks" | "one-month" | "always-ask";
+
+export type GarbageCollectorPreset = "aikar-g1" | "generational-zgc" | "shenandoah";
+
+export type LaunchLogLevel = "info" | "success" | "warning" | "error";
+
+export interface ILaunchLogEntry {
+  id: string;
+  timestamp: string;
+  level: LaunchLogLevel;
+  phase: string;
+  message: string;
+  instanceId?: string;
+}
 
 export type SettingsSection = "general" | "launch" | "mission" | "rpc" | "privacy";
 

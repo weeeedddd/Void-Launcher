@@ -4,6 +4,7 @@
 
 pub mod commands;
 pub mod microsoft;
+pub mod session_store;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;

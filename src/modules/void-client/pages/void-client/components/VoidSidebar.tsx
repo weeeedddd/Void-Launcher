@@ -17,8 +17,8 @@ export const VoidSidebar = memo(function VoidSidebar() {
   return (
     <aside className={voidClientStyles.sidebar} aria-label="Void Client navigation">
       <div className="mb-6 px-3">
-        <p className={voidClientStyles.sectionKicker}>Shadow Garden OS</p>
-        <p className="font-display mt-1 text-sm font-black tracking-[0.17em]">VOID // ASCENSION</p>
+        <p className={voidClientStyles.sectionKicker}>Shadow Garden</p>
+        <p className="font-display mt-1 text-sm font-black tracking-[0.17em]">VOID LAUNCHER</p>
       </div>
 
       <nav className="space-y-1.5">
@@ -39,7 +39,7 @@ export const VoidSidebar = memo(function VoidSidebar() {
                 <ShadowGlyph name={item.icon} size={18} className="filter drop-shadow-[0_0_6px_currentColor]" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[8px] font-black tracking-[0.18em] text-[#655a70] uppercase">{item.eyebrow}</span>
+                <span className="block text-[10px] font-semibold tracking-[0.08em] text-[#817488] uppercase">{item.eyebrow}</span>
                 <span className="mt-0.5 block truncate text-xs font-bold">{item.label}</span>
               </span>
             </motion.button>
@@ -50,7 +50,7 @@ export const VoidSidebar = memo(function VoidSidebar() {
       <div className="mt-auto rounded-2xl border border-[#7B2CBF]/20 bg-[radial-gradient(circle_at_80%_0%,rgba(123,44,191,0.2),transparent_48%),rgba(0,0,0,0.24)] p-3.5">
         <div className="flex items-center gap-2 text-[#4cff9a]">
           <ShadowGlyph name="shield" size={15} className="filter drop-shadow-[0_0_7px_currentColor]" />
-          <span className="text-[9px] font-black tracking-[0.14em] uppercase">Native guard active</span>
+          <span className="text-[10px] font-semibold tracking-[0.1em] uppercase">Launcher protected</span>
         </div>
         <p className="mt-2 text-[10px] leading-4 text-[#776c82]">Tokens remain sealed inside the Rust runtime.</p>
       </div>

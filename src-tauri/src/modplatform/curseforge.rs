@@ -2,13 +2,13 @@
 //!
 //! Requires a (free) API key from https://console.curseforge.com/, sent as
 //! the `x-api-key` header on every request. The key is resolved in
-//! `AppState::curseforge_api_key()` (env var or settings.json).
+//! `AppState::curseforge_api_key()` (environment variable or encrypted local store).
 
 use serde::Deserialize;
 
 use super::{
-    ModLoader, ModSummary, ModVersionInfo, Platform, ProjectType, SearchParams,
-    SearchResultPage, SearchSort,
+    ModLoader, ModSummary, ModVersionInfo, Platform, ProjectType, SearchParams, SearchResultPage,
+    SearchSort,
 };
 use crate::error::LauncherError;
 
@@ -115,7 +115,12 @@ pub async fn search(
         ("sortField", sort_field(params.sort).into()),
         (
             "sortOrder",
-            if params.sort == SearchSort::Name { "asc" } else { "desc" }.into(),
+            if params.sort == SearchSort::Name {
+                "asc"
+            } else {
+                "desc"
+            }
+            .into(),
         ),
         ("pageSize", limit.to_string()),
         ("index", params.offset.to_string()),
@@ -127,15 +132,22 @@ pub async fn search(
         query.push(("modLoaderType", loader_id(loader).into()));
     }
 
-    let resp: ApiResponse<Vec<Mod>> = http
+    let response = http
         .get(format!("{BASE}/mods/search"))
         .header("x-api-key", api_key)
         .query(&query)
         .send()
-        .await?
-        .error_for_status()?
-        .json()
         .await?;
+    if matches!(
+        response.status(),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        return Err(LauncherError::Config(
+            "CurseForge rejected the saved API key. Open the CurseForge key panel, remove the old value, and paste a current Core API key from the developer console."
+                .into(),
+        ));
+    }
+    let resp: ApiResponse<Vec<Mod>> = response.error_for_status()?.json().await?;
 
     let pagination = resp.pagination;
     let items = resp
@@ -239,15 +251,22 @@ pub async fn files(
         query.push(("modLoaderType", loader_id(loader).into()));
     }
 
-    let resp: ApiResponse<Vec<File>> = http
+    let response = http
         .get(format!("{BASE}/mods/{mod_id}/files"))
         .header("x-api-key", api_key)
         .query(&query)
         .send()
-        .await?
-        .error_for_status()?
-        .json()
         .await?;
+    if matches!(
+        response.status(),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        return Err(LauncherError::Config(
+            "CurseForge rejected the saved API key. Replace it with a current Core API key from the developer console."
+                .into(),
+        ));
+    }
+    let resp: ApiResponse<Vec<File>> = response.error_for_status()?.json().await?;
 
     Ok(resp
         .data

@@ -11,14 +11,57 @@ use crate::state::AppState;
 
 /// Fetches the CurseForge key or explains how to configure one.
 pub(crate) fn require_curseforge_key(state: &AppState) -> Result<String, LauncherError> {
-    state.curseforge_api_key().ok_or_else(|| {
+    let key = state.curseforge_api_key().ok_or_else(|| {
         LauncherError::Config(
             "No CurseForge API key configured. Get a free key at console.curseforge.com and \
-             set the CURSEFORGE_API_KEY environment variable (or settings.json). \
+             save it in the launcher's CurseForge key panel or set CURSEFORGE_API_KEY. \
              Tip: Modrinth works without a key."
                 .into(),
         )
-    })
+    })?;
+    validate_curseforge_key(key)
+}
+
+pub(crate) fn validate_curseforge_key(key: String) -> Result<String, LauncherError> {
+    let trimmed = key.trim().to_owned();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("api_key") {
+        return Err(LauncherError::Config(
+            "The saved CurseForge API key is empty or a placeholder. Generate a real key in the CurseForge developer console."
+                .into(),
+        ));
+    }
+    if trimmed.len() > 512 || trimmed.chars().any(char::is_control) {
+        return Err(LauncherError::Config(
+            "The CurseForge API key contains invalid characters or is unexpectedly long. Copy it again from the CurseForge developer console."
+                .into(),
+        ));
+    }
+    Ok(trimmed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_curseforge_key;
+
+    #[test]
+    fn accepts_current_curseforge_console_key_shape() {
+        let key = "$2a$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ12";
+        assert_eq!(validate_curseforge_key(key.into()).unwrap(), key);
+    }
+
+    #[test]
+    fn accepts_opaque_curseforge_keys_without_guessing_their_format() {
+        assert_eq!(
+            validate_curseforge_key("opaque-console-key".into()).unwrap(),
+            "opaque-console-key"
+        );
+    }
+
+    #[test]
+    fn rejects_placeholders_and_control_characters() {
+        assert!(validate_curseforge_key("API_KEY".into()).is_err());
+        assert!(validate_curseforge_key("valid-looking-key\nsecond-line".into()).is_err());
+    }
 }
 
 /// THE unified mod search — same call, same result shape for both platforms.

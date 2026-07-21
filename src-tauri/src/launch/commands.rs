@@ -7,8 +7,8 @@ use lyceris::minecraft::launch::launch;
 use lyceris::minecraft::loader::{
     fabric::Fabric, forge::Forge, neoforge::NeoForge, quilt::Quilt, Loader,
 };
-use serde::Deserialize;
-use tauri::State;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::error::LauncherError;
@@ -22,7 +22,28 @@ use crate::state::AppState;
 /// Microsoft -> Xbox -> Minecraft ownership flow stored in native AppState.
 #[tauri::command]
 pub async fn launch_instance(
+    app: AppHandle,
     state: State<'_, AppState>,
+    instance_id: Uuid,
+    developer_test_mode: bool,
+) -> Result<(), LauncherError> {
+    emit_launch_log(
+        &app,
+        instance_id,
+        "info",
+        "queued",
+        "Launch request accepted by the native service.",
+    );
+    let result = launch_instance_inner(&app, state.inner(), instance_id, developer_test_mode).await;
+    if let Err(error) = &result {
+        emit_launch_log(&app, instance_id, "error", "failed", &error.to_string());
+    }
+    result
+}
+
+async fn launch_instance_inner(
+    app: &AppHandle,
+    state: &AppState,
     instance_id: Uuid,
     developer_test_mode: bool,
 ) -> Result<(), LauncherError> {
@@ -31,9 +52,23 @@ pub async fn launch_instance(
 
     if developer_test_mode {
         tokio::time::sleep(std::time::Duration::from_millis(1_250)).await;
+        emit_launch_log(
+            app,
+            instance_id,
+            "success",
+            "preview",
+            "Preview launch completed.",
+        );
         return Ok(());
     }
 
+    emit_launch_log(
+        app,
+        instance_id,
+        "info",
+        "authentication",
+        "Verifying the Microsoft Minecraft session.",
+    );
     let session = state.session.read().await.clone().ok_or_else(|| {
         LauncherError::Auth("Sign in with Microsoft before launching Minecraft.".into())
     })?;
@@ -42,6 +77,13 @@ pub async fn launch_instance(
             "Your Minecraft session expired. Sign in with Microsoft again.".into(),
         ));
     }
+    emit_launch_log(
+        app,
+        instance_id,
+        "success",
+        "authentication",
+        "Microsoft ownership session verified.",
+    );
 
     let authentication = AuthMethod::Microsoft {
         username: session.profile.name,
@@ -64,43 +106,157 @@ pub async fn launch_instance(
         .custom_java_args(instance.extra_java_args.clone())
         .client(state.http.clone());
 
+    emit_launch_log(
+        app,
+        instance_id,
+        "info",
+        "runtime",
+        &format!(
+            "Preparing Minecraft {} with {} MB RAM.",
+            instance.game_version, instance.memory_mb
+        ),
+    );
+
     match instance.loader {
-        InstanceLoader::Vanilla => install_and_launch(builder.build()).await?,
+        InstanceLoader::Vanilla => install_and_launch(app, instance_id, builder.build()).await?,
         InstanceLoader::Fabric => {
+            emit_launch_log(
+                app,
+                instance_id,
+                "info",
+                "loader",
+                "Resolving the latest compatible Fabric loader.",
+            );
             let version = resolve_loader_version(&state.http, &instance).await?;
-            install_and_launch(builder.loader(Fabric(version).into()).build()).await?;
+            install_and_launch(
+                app,
+                instance_id,
+                builder.loader(Fabric(version).into()).build(),
+            )
+            .await?;
         }
         InstanceLoader::Forge => {
+            emit_launch_log(
+                app,
+                instance_id,
+                "info",
+                "loader",
+                "Resolving the latest compatible Forge loader.",
+            );
             let version = resolve_loader_version(&state.http, &instance).await?;
-            install_and_launch(builder.loader(Forge(version).into()).build()).await?;
+            install_and_launch(
+                app,
+                instance_id,
+                builder.loader(Forge(version).into()).build(),
+            )
+            .await?;
         }
         InstanceLoader::Neoforge => {
+            emit_launch_log(
+                app,
+                instance_id,
+                "info",
+                "loader",
+                "Resolving the latest compatible NeoForge loader.",
+            );
             let version = resolve_loader_version(&state.http, &instance).await?;
-            install_and_launch(builder.loader(NeoForge(version).into()).build()).await?;
+            install_and_launch(
+                app,
+                instance_id,
+                builder.loader(NeoForge(version).into()).build(),
+            )
+            .await?;
         }
         InstanceLoader::Quilt => {
+            emit_launch_log(
+                app,
+                instance_id,
+                "info",
+                "loader",
+                "Resolving the latest compatible Quilt loader.",
+            );
             let version = resolve_loader_version(&state.http, &instance).await?;
-            install_and_launch(builder.loader(Quilt(version).into()).build()).await?;
+            install_and_launch(
+                app,
+                instance_id,
+                builder.loader(Quilt(version).into()).build(),
+            )
+            .await?;
         }
     }
 
     instance.last_played_at = Some(chrono::Utc::now());
     instance.save(&instances_root)?;
+    emit_launch_log(
+        app,
+        instance_id,
+        "success",
+        "running",
+        "Minecraft process started successfully.",
+    );
     Ok(())
 }
 
-async fn install_and_launch<T: Loader>(config: Config<T>) -> Result<(), LauncherError> {
+async fn install_and_launch<T: Loader>(
+    app: &AppHandle,
+    instance_id: Uuid,
+    config: Config<T>,
+) -> Result<(), LauncherError> {
+    emit_launch_log(
+        app,
+        instance_id,
+        "info",
+        "install",
+        "Downloading and verifying required game files.",
+    );
     install(&config, None).await.map_err(|error| {
         LauncherError::Internal(format!("Minecraft installation failed: {error}"))
     })?;
+    emit_launch_log(
+        app,
+        instance_id,
+        "success",
+        "install",
+        "Game files and libraries verified.",
+    );
 
     // On Windows Lyceris resolves javaw.exe, so no console window is opened.
     // Dropping tokio::process::Child does not terminate the spawned game.
+    emit_launch_log(
+        app,
+        instance_id,
+        "info",
+        "process",
+        "Starting the windowless Java game process.",
+    );
     let child = launch(&config, None)
         .await
         .map_err(|error| LauncherError::Internal(format!("Minecraft launch failed: {error}")))?;
     drop(child);
     Ok(())
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LauncherLogEvent {
+    timestamp: String,
+    level: String,
+    phase: String,
+    message: String,
+    instance_id: String,
+}
+
+fn emit_launch_log(app: &AppHandle, instance_id: Uuid, level: &str, phase: &str, message: &str) {
+    let _ = app.emit(
+        "launcher-log",
+        LauncherLogEvent {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            level: level.to_owned(),
+            phase: phase.to_owned(),
+            message: message.to_owned(),
+            instance_id: instance_id.to_string(),
+        },
+    );
 }
 
 async fn resolve_loader_version(

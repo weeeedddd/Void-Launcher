@@ -1,6 +1,6 @@
 //! Commands for the Performance Optimizer & Java management.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::task;
 use uuid::Uuid;
@@ -191,4 +191,100 @@ pub async fn optimize_instance(
         jvm_args,
         java: runtime,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameVideoSettings {
+    pub render_distance: u32,
+    pub simulation_distance: u32,
+    pub graphics_mode: String,
+    pub max_fps: u32,
+}
+
+/// Applies benchmark recommendations to the selected instance's real
+/// `options.txt` while preserving unrelated user settings.
+#[tauri::command]
+pub fn apply_game_video_settings(
+    state: State<'_, AppState>,
+    instance_id: Uuid,
+    settings: GameVideoSettings,
+) -> Result<GameVideoSettings, LauncherError> {
+    let instance = Instance::find(&state.instances_dir(), instance_id)?;
+    let normalized = GameVideoSettings {
+        render_distance: settings.render_distance.clamp(2, 64),
+        simulation_distance: settings.simulation_distance.clamp(2, 32),
+        graphics_mode: match settings.graphics_mode.as_str() {
+            "fast" | "fancy" | "fabulous" => settings.graphics_mode,
+            _ => {
+                return Err(LauncherError::InvalidData(
+                    "Graphics mode must be fast, fancy, or fabulous.".into(),
+                ))
+            }
+        },
+        max_fps: settings.max_fps.clamp(30, 360),
+    };
+    let options_path = instance.dir(&state.instances_dir()).join("options.txt");
+    let existing = std::fs::read_to_string(&options_path).unwrap_or_default();
+    let graphics_index = match normalized.graphics_mode.as_str() {
+        "fast" => "0",
+        "fancy" => "1",
+        _ => "2",
+    };
+    let replacements = [
+        ("renderDistance", normalized.render_distance.to_string()),
+        (
+            "simulationDistance",
+            normalized.simulation_distance.to_string(),
+        ),
+        ("graphicsMode", graphics_index.to_owned()),
+        (
+            "fancyGraphics",
+            (normalized.graphics_mode != "fast").to_string(),
+        ),
+        ("maxFps", normalized.max_fps.to_string()),
+    ];
+    let updated = replace_options(&existing, &replacements);
+    std::fs::create_dir_all(instance.dir(&state.instances_dir()))?;
+    std::fs::write(options_path, updated)?;
+    Ok(normalized)
+}
+
+fn replace_options(existing: &str, replacements: &[(&str, String)]) -> String {
+    let mut written = std::collections::HashSet::new();
+    let mut lines = Vec::new();
+    for line in existing.lines() {
+        let key = line.split_once(':').map(|(key, _)| key);
+        if let Some((replacement_key, value)) = replacements
+            .iter()
+            .find(|(replacement_key, _)| Some(*replacement_key) == key)
+        {
+            lines.push(format!("{replacement_key}:{value}"));
+            written.insert(*replacement_key);
+        } else if !line.trim().is_empty() {
+            lines.push(line.to_owned());
+        }
+    }
+    for (key, value) in replacements {
+        if !written.contains(key) {
+            lines.push(format!("{key}:{value}"));
+        }
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+#[cfg(test)]
+mod video_settings_tests {
+    use super::replace_options;
+
+    #[test]
+    fn replaces_known_options_and_preserves_unrelated_lines() {
+        let updated = replace_options(
+            "renderDistance:8\nmusic:0.5\n",
+            &[("renderDistance", "16".into()), ("maxFps", "120".into())],
+        );
+        assert!(updated.contains("renderDistance:16"));
+        assert!(updated.contains("music:0.5"));
+        assert!(updated.contains("maxFps:120"));
+    }
 }

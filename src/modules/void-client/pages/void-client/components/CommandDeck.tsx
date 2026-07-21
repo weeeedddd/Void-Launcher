@@ -11,8 +11,10 @@ import {
 import { getVersion } from "@tauri-apps/api/app";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { api } from "@/lib/api";
+import { useAccountStore } from "@/stores/account";
 import type { LauncherFolderKind } from "@/types";
 import { NAVIGATION_ITEMS } from "../../../constants";
+import { translatedViewLabel } from "../../../i18n";
 import { ShadowGlyph } from "../../../components/ShadowGlyph";
 import { useLauncherInstance } from "../../../hooks/useLauncherInstance";
 import { useVoidClientStore } from "../../../stores/voidClient.store";
@@ -22,7 +24,6 @@ type UpdateState = "idle" | "checking" | "current";
 type UploadState = "idle" | "uploading" | "complete";
 type FocusTarget = "first" | "last";
 
-const LIVE_COUNTER_STEPS = [0, 3, -2, 5, -1, 4, -3, 2] as const;
 const MENU_ITEM_SELECTOR = '[data-command-menu-item="true"]:not(:disabled)';
 const SUBMENU_ITEM_SELECTOR = '[data-command-submenu-item="true"]:not(:disabled)';
 
@@ -116,14 +117,14 @@ export const CommandDeck = memo(function CommandDeck() {
   const restartTriggerRef = useRef<HTMLButtonElement>(null);
   const cancelRestartRef = useRef<HTMLButtonElement>(null);
   const requestedFocusRef = useRef<FocusTarget>("first");
-  const counterStepRef = useRef(0);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [restartConfirmation, setRestartConfirmation] = useState(false);
   const [version, setVersion] = useState("Preview build");
-  const [onlineCount, setOnlineCount] = useState(14_023);
+  const profile = useAccountStore((state) => state.profile);
+  const language = useVoidClientStore((state) => state.language);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [nativePending, setNativePending] = useState<LauncherFolderKind | "restart" | null>(null);
@@ -144,15 +145,6 @@ export const CommandDeck = memo(function CommandDeck() {
     return () => {
       active = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      counterStepRef.current = (counterStepRef.current + 1) % LIVE_COUNTER_STEPS.length;
-      const delta = LIVE_COUNTER_STEPS[counterStepRef.current] ?? 0;
-      setOnlineCount(14_023 + delta);
-    }, 4_500);
-    return () => window.clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -367,18 +359,18 @@ export const CommandDeck = memo(function CommandDeck() {
       className="pointer-events-none absolute inset-x-0 top-16 z-40 h-[76px] px-5 pt-3"
     >
       <div className="pointer-events-auto relative z-50 flex w-fit items-stretch">
-        <div className="flex h-12 items-center gap-2.5 border border-[#4cff9a]/18 bg-[linear-gradient(110deg,rgba(7,16,13,0.9),rgba(17,13,23,0.94))] px-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_12px_35px_rgba(0,0,0,0.45),0_0_24px_rgba(76,255,154,0.06)] backdrop-blur-2xl [clip-path:polygon(0_0,100%_0,91%_100%,0_100%)]">
+        <div className={`flex h-12 items-center gap-2.5 rounded-xl border px-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_12px_35px_rgba(0,0,0,0.45)] backdrop-blur-2xl ${profile ? "border-[#4cff9a]/18 bg-[linear-gradient(110deg,rgba(7,16,13,0.9),rgba(17,13,23,0.94))]" : "border-amber-300/16 bg-[linear-gradient(110deg,rgba(27,20,8,0.88),rgba(17,13,23,0.94))]"}`}>
           <motion.span
             aria-hidden="true"
             animate={reducedMotion ? undefined : { opacity: [1, 0.38, 1], scale: [1, 0.76, 1] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-            className="size-2 rounded-full bg-[#4cff9a] shadow-[0_0_15px_rgba(76,255,154,0.9)]"
+            className={`size-2 rounded-full ${profile ? "bg-[#4cff9a] shadow-[0_0_15px_rgba(76,255,154,0.9)]" : "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.65)]"}`}
           />
           <span className="min-w-[108px]">
-            <strong className="font-display block text-[11px] font-black tracking-[0.08em] text-white tabular-nums">
-              {onlineCount.toLocaleString("en-US")} Online
+            <strong className="font-display block text-[11px] font-black tracking-[0.07em] text-white">
+              {profile ? "Account connected" : "Sign in required"}
             </strong>
-            <small className="block text-[7px] font-black tracking-[0.2em] text-[#4cff9a]/72 uppercase">Live preview signal</small>
+            <small className={`block text-[9px] font-bold tracking-[0.08em] ${profile ? "text-[#4cff9a]/78" : "text-amber-200/72"}`}>{profile ? profile.name : "Microsoft verification"}</small>
           </span>
         </div>
 
@@ -391,7 +383,7 @@ export const CommandDeck = memo(function CommandDeck() {
           aria-label={menuOpen ? "Close Void system menu" : "Open Void system menu"}
           onClick={toggleMenu}
           onKeyDown={openMenuFromKeyboard}
-          className={`-ml-1 grid size-12 cursor-pointer place-items-center border border-[#9d5ce0]/28 bg-[linear-gradient(145deg,rgba(54,21,78,0.96),rgba(14,10,19,0.96))] text-[#d8b4fe] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_24px_rgba(123,44,191,0.2)] transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-[#d8b4fe]/55 hover:text-white hover:shadow-[0_0_30px_rgba(123,44,191,0.38)] focus-visible:border-[#f2e8ff] focus-visible:text-white [clip-path:polygon(22%_0,100%_0,100%_100%,0_100%,12%_50%)] ${classes.focus}`}
+          className={`-ml-1 grid size-12 cursor-pointer place-items-center rounded-xl border border-[#9d5ce0]/28 bg-[linear-gradient(145deg,rgba(54,21,78,0.96),rgba(14,10,19,0.96))] text-[#d8b4fe] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_24px_rgba(123,44,191,0.2)] transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-[#d8b4fe]/55 hover:text-white hover:shadow-[0_0_30px_rgba(123,44,191,0.38)] focus-visible:border-[#f2e8ff] focus-visible:text-white ${classes.focus}`}
         >
           <ShadowGlyph
             name="arrow"
@@ -416,10 +408,10 @@ export const CommandDeck = memo(function CommandDeck() {
             >
               <div className="mb-1 flex items-center justify-between border-b border-white/[0.065] px-3 pb-2.5 pt-1.5">
                 <span>
-                  <span className="block text-[8px] font-black tracking-[0.22em] text-[#c796ff] uppercase">System aperture</span>
-                  <span className="mt-0.5 block text-[10px] font-bold text-[#6f6379]">Native controls and preview tools</span>
+                  <span className="block text-[8px] font-black tracking-[0.18em] text-[#c796ff] uppercase">Void Launcher</span>
+                  <span className="mt-0.5 block text-[10px] font-bold text-[#86798f]">Navigation and local tools</span>
                 </span>
-                <span className="border border-[#4cff9a]/20 bg-[#4cff9a]/8 px-2 py-1 text-[7px] font-black tracking-[0.15em] text-[#4cff9a] uppercase">Guarded</span>
+                  <span className="border border-[#4cff9a]/20 bg-[#4cff9a]/8 px-2 py-1 text-[7px] font-black tracking-[0.15em] text-[#4cff9a] uppercase">Local</span>
               </div>
 
               <button
@@ -646,7 +638,7 @@ export const CommandDeck = memo(function CommandDeck() {
 
       <nav
         aria-label="Void Client primary navigation"
-        className="pointer-events-auto absolute left-1/2 top-3 flex max-w-[calc(100%_-_510px)] -translate-x-1/2 items-center overflow-x-auto border-y border-[#9d5ce0]/18 bg-[linear-gradient(90deg,transparent,rgba(17,13,23,0.95)_8%,rgba(17,13,23,0.95)_92%,transparent)] px-5 shadow-[0_16px_44px_rgba(0,0,0,0.36),0_0_26px_rgba(123,44,191,0.08)] backdrop-blur-2xl [clip-path:polygon(2%_0,98%_0,100%_50%,98%_100%,2%_100%,0_50%)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="pointer-events-auto absolute left-1/2 top-3 flex max-w-[calc(100%_-_510px)] -translate-x-1/2 items-center overflow-x-auto rounded-xl border border-[#9d5ce0]/18 bg-[linear-gradient(90deg,rgba(17,13,23,0.97),rgba(17,13,23,0.97))] px-2 shadow-[0_16px_44px_rgba(0,0,0,0.36),0_0_26px_rgba(123,44,191,0.08)] backdrop-blur-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {NAVIGATION_ITEMS.map((item) => {
           const active = item.id === activeView;
@@ -659,7 +651,7 @@ export const CommandDeck = memo(function CommandDeck() {
               onClick={navigate}
               whileHover={reducedMotion ? undefined : { y: -1 }}
               whileTap={reducedMotion ? undefined : { scale: 0.985 }}
-              className={`group relative flex h-12 min-w-[122px] cursor-pointer items-center justify-center gap-2.5 border-x px-4 transition-[color,border-color,background-color] duration-200 [clip-path:polygon(8%_0,100%_0,92%_100%,0_100%)] ${classes.insetFocus} ${active ? "border-[#9d5ce0]/35 bg-[linear-gradient(115deg,rgba(123,44,191,0.25),rgba(37,28,103,0.18))] text-white" : "border-white/[0.035] text-[#756a80] hover:border-[#9d5ce0]/18 hover:bg-white/[0.025] hover:text-[#d8cbe2]"}`}
+              className={`group relative flex h-11 min-w-[108px] cursor-pointer items-center justify-center gap-2 border-x px-3 transition-[color,border-color,background-color] duration-200 ${classes.insetFocus} ${active ? "border-[#9d5ce0]/35 bg-[linear-gradient(115deg,rgba(123,44,191,0.25),rgba(37,28,103,0.18))] text-white" : "border-white/[0.035] text-[#91869b] hover:border-[#9d5ce0]/18 hover:bg-white/[0.025] hover:text-[#f0e8f4]"}`}
             >
               {active ? (
                 <motion.span
@@ -674,8 +666,7 @@ export const CommandDeck = memo(function CommandDeck() {
                 className={`shrink-0 filter drop-shadow-[0_0_6px_currentColor] ${active ? "text-[#d8b4fe]" : "text-[#655a70] group-hover:text-[#b982ef]"}`}
               />
               <span className="min-w-0 text-left">
-                <span className="block truncate text-[7px] font-black tracking-[0.16em] text-[#655a70] uppercase">{item.eyebrow}</span>
-                <span className="mt-0.5 block truncate text-[10px] font-bold">{item.label}</span>
+                <span className="block truncate text-[11px] font-semibold">{translatedViewLabel(language, item.id)}</span>
               </span>
             </motion.button>
           );

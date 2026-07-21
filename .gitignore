@@ -24,10 +24,3 @@ src-tauri/gen/
 # Local browser smoke-test profiles and screenshots
 .qa-*/
 *-qa.png
-
-bootstrapper/src-tauri/gen/
-bootstrapper/src-tauri/target/
-
-# GitHub Pages build outputs
-dist-workflow/
-_site/

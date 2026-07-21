@@ -14,6 +14,8 @@ pub struct Settings {
     pub curseforge_api_key: Option<String>,
     /// Fallback Java executable when an instance has no override.
     pub default_java_path: Option<String>,
+    /// Public Discord application/client id used for Rich Presence IPC.
+    pub discord_client_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,6 +35,9 @@ pub struct AppState {
     /// The signed-in account. `RwLock` because commands run concurrently;
     /// `None` until `complete_microsoft_login` succeeds.
     pub session: RwLock<Option<MinecraftSession>>,
+    /// A persistent IPC connection is required; Discord clears presence when
+    /// the client disconnects, so this cannot be a short-lived local variable.
+    pub discord_rpc: std::sync::Mutex<Option<crate::discord_rpc::DiscordIpc>>,
 }
 
 impl AppState {
@@ -52,6 +57,7 @@ impl AppState {
             http,
             data_dir,
             session: RwLock::new(None),
+            discord_rpc: std::sync::Mutex::new(None),
         }
     }
 
@@ -80,6 +86,13 @@ impl AppState {
             .ok()
             .filter(|key| !key.is_empty())
             .or_else(|| self.settings().curseforge_api_key)
+    }
+
+    pub fn discord_client_id(&self) -> Option<String> {
+        std::env::var("DISCORD_CLIENT_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| self.settings().discord_client_id)
     }
 }
 

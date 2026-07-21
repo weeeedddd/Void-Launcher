@@ -6,15 +6,32 @@
 
 use serde::Deserialize;
 
-use super::{ModLoader, ModSummary, ModVersionInfo, Platform, SearchParams};
+use super::{
+    ModLoader, ModSummary, ModVersionInfo, Platform, ProjectType, SearchParams,
+    SearchResultPage, SearchSort,
+};
 use crate::error::LauncherError;
 
 const BASE: &str = "https://api.curseforge.com/v1";
 
 /// CurseForge hosts many games — 432 is Minecraft.
 const GAME_ID_MINECRAFT: &str = "432";
-/// Class 6 = "Mods". (Other classes: 4471 = modpacks, 12 = resource packs.)
-const CLASS_ID_MODS: &str = "6";
+fn class_id(project_type: ProjectType) -> &'static str {
+    match project_type {
+        ProjectType::Mod => "6",
+        ProjectType::Modpack => "4471",
+        ProjectType::Shader => "6552",
+    }
+}
+
+fn sort_field(sort: SearchSort) -> &'static str {
+    match sort {
+        SearchSort::Relevance => "2",
+        SearchSort::Downloads => "6",
+        SearchSort::Updated => "3",
+        SearchSort::Name => "4",
+    }
+}
 
 /// CurseForge encodes loaders as an enum:
 /// 0=Any 1=Forge 2=Cauldron 3=LiteLoader 4=Fabric 5=Quilt 6=NeoForge
@@ -33,6 +50,16 @@ fn loader_id(loader: ModLoader) -> &'static str {
 #[derive(Debug, Deserialize)]
 struct ApiResponse<T> {
     data: T,
+    #[serde(default)]
+    pagination: Option<Pagination>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Pagination {
+    index: u32,
+    page_size: u32,
+    total_count: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,14 +106,18 @@ pub async fn search(
     http: &reqwest::Client,
     api_key: &str,
     params: &SearchParams,
-) -> Result<Vec<ModSummary>, LauncherError> {
+) -> Result<SearchResultPage, LauncherError> {
+    let limit = params.limit.clamp(1, 50);
     let mut query: Vec<(&str, String)> = vec![
         ("gameId", GAME_ID_MINECRAFT.into()),
-        ("classId", CLASS_ID_MODS.into()),
+        ("classId", class_id(params.project_type).into()),
         ("searchFilter", params.query.clone()),
-        ("sortField", "2".into()), // 2 = Popularity (6 = TotalDownloads, 3 = LastUpdated)
-        ("sortOrder", "desc".into()),
-        ("pageSize", params.limit.to_string()),
+        ("sortField", sort_field(params.sort).into()),
+        (
+            "sortOrder",
+            if params.sort == SearchSort::Name { "asc" } else { "desc" }.into(),
+        ),
+        ("pageSize", limit.to_string()),
         ("index", params.offset.to_string()),
     ];
     if let Some(version) = &params.game_version {
@@ -106,7 +137,8 @@ pub async fn search(
         .json()
         .await?;
 
-    Ok(resp
+    let pagination = resp.pagination;
+    let items = resp
         .data
         .into_iter()
         .map(|m| {
@@ -115,6 +147,7 @@ pub async fn search(
             });
             ModSummary {
                 platform: Platform::Curseforge,
+                project_type: params.project_type,
                 id: m.id.to_string(),
                 slug: m.slug,
                 name: m.name,
@@ -130,7 +163,35 @@ pub async fn search(
                 page_url,
             }
         })
-        .collect())
+        .collect();
+
+    Ok(SearchResultPage {
+        items,
+        total: pagination
+            .as_ref()
+            .map(|value| value.total_count)
+            .unwrap_or_default(),
+        offset: pagination
+            .as_ref()
+            .map(|value| value.index)
+            .unwrap_or(params.offset),
+        limit: pagination
+            .as_ref()
+            .map(|value| value.page_size)
+            .unwrap_or(limit),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_project_types_to_minecraft_classes() {
+        assert_eq!(class_id(ProjectType::Mod), "6");
+        assert_eq!(class_id(ProjectType::Modpack), "4471");
+        assert_eq!(class_id(ProjectType::Shader), "6552");
+    }
 }
 
 // ── Files (= versions) ──────────────────────────────────────────────────

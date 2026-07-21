@@ -10,12 +10,14 @@ import type {
   JavaStatus,
   MinecraftProfile,
   ModLoader,
-  ModSummary,
   ModVersionInfo,
   OptimizationOutcome,
   OptimizationTier,
   Platform,
   SearchParams,
+  SearchResultPage,
+  DiscordRpcStatus,
+  DiscordRpcUpdate,
   SettingsStatus,
   MusicConnectionState,
   MusicPlaybackAction,
@@ -63,7 +65,7 @@ export const api = {
 
   // ── Mod platforms (Modrinth / CurseForge) ─────────────────────────────
   /** Unified search across the selected platform. */
-  searchMods: (params: SearchParams) => invoke<ModSummary[]>("search_mods", { params }),
+  searchMods: (params: SearchParams) => invoke<SearchResultPage>("search_mods", { params }),
 
   /** All downloadable versions of a project, newest first. */
   getModVersions: (
@@ -90,10 +92,9 @@ export const api = {
     invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
 
   // ── Launching ─────────────────────────────────────────────────────────
-  /** Installs/verifies and starts the selected instance for a native-held,
-   *  authenticated Minecraft session. Developer/offline mode only simulates. */
-  launchInstance: (instanceId: string, developerTestMode = false) =>
-    invoke<void>("launch_instance", { instanceId, developerTestMode }),
+  /** Installs, verifies and starts the selected instance with the native-held authenticated session. */
+  launchInstance: (instanceId: string) =>
+    invoke<void>("launch_instance", { instanceId, developerTestMode: false }),
 
   // ── Performance Optimizer & Java management ───────────────────────────
   /** Scans CPU, RAM, GPU and disk (runs on a Rust worker thread). */
@@ -130,4 +131,12 @@ export const api = {
     invoke<StorageReport>("clear_storage_category", { category }),
 
   restartLauncher: () => invoke<void>("restart_launcher"),
+
+  getDiscordRpcStatus: () => invoke<DiscordRpcStatus>("get_discord_rpc_status"),
+
+  setDiscordClientId: (applicationId: string | null) =>
+    invoke<DiscordRpcStatus>("set_discord_client_id", { applicationId }),
+
+  updateDiscordRpc: (request: DiscordRpcUpdate) =>
+    invoke<DiscordRpcStatus>("update_discord_rpc", { request }),
 };

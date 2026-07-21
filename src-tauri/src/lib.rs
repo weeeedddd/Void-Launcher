@@ -15,6 +15,7 @@
 
 pub mod auth;
 pub mod diagnostics;
+pub mod discord_rpc;
 pub mod error;
 pub mod instance;
 pub mod launch;
@@ -118,6 +119,10 @@ pub fn run() {
             diagnostics::commands::open_launcher_folder,
             diagnostics::commands::clear_storage_category,
             diagnostics::commands::restart_launcher,
+            // Discord Rich Presence (native IPC)
+            discord_rpc::get_discord_rpc_status,
+            discord_rpc::set_discord_client_id,
+            discord_rpc::update_discord_rpc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Void Launcher");

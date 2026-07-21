@@ -2,6 +2,7 @@ import { useId, type ReactNode, type SVGProps } from "react";
 
 export const shadowGlyphNames = [
   "dashboard",
+  "vault",
   "mods",
   "telemetry",
   "settings",
@@ -10,9 +11,9 @@ export const shadowGlyphNames = [
   "close",
   "addFriend",
   "download",
+  "external",
   "chevronDown",
   "account",
-  "offline",
   "check",
   "sliders",
   "shield",
@@ -69,6 +70,14 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
           <path fill={`url(#${gradientId})`} d="m7.8 5.2-3.1 1 .1 3.1 3.6-.7Zm6.6-.5-.7 3.7 4.1.7 1-2.9ZM5.1 15.4l.1 2.2 3 1 .1-3.8Zm8.9-.3.5 4 4-1.1-.3-2.3Z" opacity=".33" />
         </>
       );
+    case "vault":
+      return (
+        <>
+          <path {...commonStroke} d="M3.2 5.1 12 2.2l8.8 2.9-.9 14.1-7.9 2.6-7.9-2.6Zm4 2.2h9.6l.7 9.1-5.5 2-5.5-2Zm4.8.3v10.6m-5.1-5.4h10.2" />
+          <path {...commonStroke} d="m9.6 10.4 2.4-1.5 2.4 1.5-.3 4-2.1 1.2-2.1-1.2Z" />
+          <path fill={`url(#${gradientId})`} d="m5.2 6.4 6.8-2.1 6.8 2.1-.7 11.3-6.1 2-6.1-2Zm3.3 2.4-.5 6.6 4 1.4 4-1.4-.5-6.6Z" opacity=".22" />
+        </>
+      );
     case "mods":
       return <path {...commonStroke} d="m4 5.4 6.1-3.1 3 3.2 4.1-1.8 3 3.4-2 4.1 2 3.8-3.3 4.3-4.2-1.7-3.4 3.7-5.5-3.4 1.7-4.5-2.4-3.1Zm5.5 4.1 2.8-1.8 2.6 1.7-.4 3.6-3.1 1.8-2.7-2Z" />;
     case "telemetry":
@@ -101,6 +110,8 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return <path {...commonStroke} d="m8.7 3 3.1 2.2-.7 4.1-3.4 2-3.3-2.4.8-4Zm-5 17.8.8-5.2 4-2.4 4.2 2.4.7 5.2m4.1-10.2v8m-4-4h8" />;
     case "download":
       return <path {...commonStroke} d="m4 15.2.8 5.1h14.7l.7-5.1M12 2.4v12.2m-5-4.1 5 4.5 5-4.5m-7.8 7h5.7" />;
+    case "external":
+      return <path {...commonStroke} d="M13 3h8v8m0-8-9.4 9.4M18 13.2v6.4l-2.2 2.2H4.4L2.2 19.6V8.2L4.4 6H11" />;
     case "chevronDown":
       return <path {...commonStroke} d="m3.2 7.6 8.9 9 8.7-9-8.8 5.2Z" />;
     case "account":
@@ -110,8 +121,6 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
           <path fill={`url(#${gradientId})`} d="m9 6.1 3-1.5 2.2 1.7-.5 3.1-2.1 1.2-2.4-1.4ZM6.2 17.5l3.4-2 2.3 2 2.6-2 3.4 2 .3 2.1H5.8Z" opacity=".32" />
         </>
       );
-    case "offline":
-      return <path {...commonStroke} d="M12 2.2 18 5l2.2 6.4-2.4 7-5.8 3.4-5.9-3.4-2.3-7L6 5Zm-4.6 8.3 2.3 2.4 2.2-3.3 2.3 3.3 2.4-2.4m-9.9 6.1 10.7-9.2" />;
     case "check":
       return (
         <>

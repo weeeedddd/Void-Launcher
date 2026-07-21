@@ -166,8 +166,8 @@ export function ModSearchPage() {
                 {isFetching && <div className="absolute inset-x-0 -top-2 z-10 h-0.5 overflow-hidden rounded-full bg-white/5"><motion.div className="shadow-energy-rail h-full w-1/3" animate={{ x: ["-100%", "400%"] }} transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }} /></div>}
                 <AnimatePresence mode="popLayout">
                   <div className={`grid grid-cols-1 gap-4 transition-opacity md:grid-cols-2 2xl:grid-cols-3 ${isFetching ? "opacity-55" : "opacity-100"}`}>
-                    {mods?.map((mod) => <ModCard key={`${mod.platform}:${mod.id}`} mod={mod} onSelect={selectMod} />)}
-                    {mods?.length === 0 && !isFetching && <div className="col-span-full rounded-3xl border border-dashed border-white/10 py-20 text-center"><Search size={26} className="mx-auto mb-3 text-ink-500" /><p className="text-sm font-semibold text-ink-300">No mods found</p><p className="mt-1 text-xs text-ink-500">Try another search, version or loader.</p></div>}
+                    {mods?.items.map((mod) => <ModCard key={`${mod.platform}:${mod.id}`} mod={mod} onSelect={selectMod} />)}
+                    {mods?.items.length === 0 && !isFetching && <div className="col-span-full rounded-3xl border border-dashed border-white/10 py-20 text-center"><Search size={26} className="mx-auto mb-3 text-ink-500" /><p className="text-sm font-semibold text-ink-300">No mods found</p><p className="mt-1 text-xs text-ink-500">Try another search, version or loader.</p></div>}
                   </div>
                 </AnimatePresence>
                 <Pagination page={page} onPageChange={changePage} />

@@ -36,16 +36,3 @@ export function MinecraftAvatar({ username, size = 64, className }: MinecraftAva
     />
   );
 }
-
-export function OfflineShadowAvatar({ size = 64, className }: Omit<MinecraftAvatarProps, "username">) {
-  return (
-    <img
-      src="/offline-shadow-avatar.png"
-      alt="Offline shadow profile"
-      width={size}
-      height={size}
-      decoding="async"
-      className={cn("shrink-0 bg-void-900 object-cover", className)}
-    />
-  );
-}

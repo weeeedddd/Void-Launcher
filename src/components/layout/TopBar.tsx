@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { FlaskConical, Minus, ShieldCheck, Square, WifiOff, X } from "lucide-react";
+import { Minus, ShieldCheck, Square, X } from "lucide-react";
 import { AccountManager } from "@/components/account/AccountManager";
 import { closeCurrentWindow, minimizeCurrentWindow, toggleCurrentWindowMaximized } from "@/lib/windowControls";
 import { useAccountStore, type AccountMode } from "@/stores/account";
@@ -46,17 +46,16 @@ export function TopBar() {
 }
 
 function ClientActiveIndicator({ mode }: { mode: AccountMode }) {
-  const developerMode = mode === "developer";
-  const offlineMode = mode === "offline";
+  const verified = mode === "microsoft";
   return (
     <div
       role="status"
-      aria-label={offlineMode ? "Offline singleplayer mode" : developerMode ? "Developer sandbox active" : "Client active"}
-      className={`flex h-9 items-center gap-2.5 rounded-full border px-4 text-[10px] font-black tracking-[0.18em] uppercase ${developerMode || offlineMode ? "border-amber-400/24 bg-amber-400/[0.065] text-amber-300 shadow-[0_0_24px_rgb(251_191_36_/_0.08)]" : "border-success-500/24 bg-success-500/[0.065] text-success-400 shadow-[0_0_24px_rgb(0_230_118_/_0.08)]"}`}
+      aria-label={verified ? "Microsoft verified" : "Authentication required"}
+      className={`flex h-9 items-center gap-2.5 rounded-full border px-4 text-[10px] font-black tracking-[0.18em] uppercase ${verified ? "border-success-500/24 bg-success-500/[0.065] text-success-400 shadow-[0_0_24px_rgb(0_230_118_/_0.08)]" : "border-white/10 bg-white/[0.035] text-ink-300"}`}
     >
-      {offlineMode ? <WifiOff size={14} /> : developerMode ? <FlaskConical size={14} /> : <ShieldCheck size={14} />}
-      {offlineMode ? "Offline singleplayer" : developerMode ? "Developer sandbox" : "Client active"}
-      <span className={`size-1.5 rounded-full ${developerMode || offlineMode ? "bg-amber-300 shadow-[0_0_9px_rgb(252_211_77_/_0.75)]" : "bg-success-500 shadow-[0_0_9px_var(--color-success-glow)]"}`} />
+      <ShieldCheck size={14} />
+      {verified ? "Microsoft verified" : "Sign-in required"}
+      <span className={`size-1.5 rounded-full ${verified ? "bg-success-500 shadow-[0_0_9px_var(--color-success-glow)]" : "bg-ink-500"}`} />
     </div>
   );
 }

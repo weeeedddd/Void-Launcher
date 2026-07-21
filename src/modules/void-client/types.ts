@@ -1,4 +1,4 @@
-export type VoidView = "dashboard" | "mods" | "telemetry" | "settings" | "chronicle";
+export type VoidView = "dashboard" | "deployments" | "mods" | "telemetry" | "settings" | "chronicle";
 
 export type SettingsSection = "general" | "launch" | "mission" | "rpc" | "privacy";
 
@@ -30,7 +30,9 @@ export type CrashLogDestination = "mc-logs" | "void-native";
 
 export type CatalogSource = "modrinth" | "curseforge";
 
-export type CatalogKind = "modpack" | "shader";
+export type CatalogKind = "modpack" | "mod" | "shader";
+
+export type CatalogLoader = "Forge" | "Fabric" | "NeoForge" | "Iris" | "Quilt";
 
 export type InstallPhase = "idle" | "installing" | "installed";
 
@@ -39,6 +41,7 @@ export interface ITelemetrySnapshot {
   ram: number;
   ping: number;
   fps: number;
+  launchLoadActive: boolean;
   cpuHistory: number[];
   ramHistory: number[];
 }
@@ -57,6 +60,11 @@ export interface IModCatalogItem {
   gameVersion: string;
   source: CatalogSource;
   kind: CatalogKind;
+  category: string;
+  loader: CatalogLoader;
+  imageUrl: string;
+  updatedAt: string;
+  downloadCount: number;
   accent: "violet" | "blue" | "crimson" | "amber";
   downloads: string;
 }

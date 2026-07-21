@@ -12,6 +12,9 @@ export type Platform = "modrinth" | "curseforge";
 /** Mod loaders supported by the mod platforms. */
 export type ModLoader = "fabric" | "forge" | "neoforge" | "quilt";
 
+export type ProjectType = "mod" | "modpack" | "shader";
+export type SearchSort = "relevance" | "downloads" | "updated" | "name";
+
 /** What an instance runs on — vanilla or one of the loaders. */
 export type InstanceLoader = "vanilla" | ModLoader;
 
@@ -19,6 +22,8 @@ export type InstanceLoader = "vanilla" | ModLoader;
 export interface SearchParams {
   platform: Platform;
   query: string;
+  projectType?: ProjectType;
+  sort?: SearchSort;
   /** e.g. "1.21.1" — omit for "any version" */
   gameVersion?: string;
   /** omit for "any loader" */
@@ -30,6 +35,7 @@ export interface SearchParams {
 /** Normalized search result — identical shape for Modrinth & CurseForge. */
 export interface ModSummary {
   platform: Platform;
+  projectType: ProjectType;
   /** Platform-specific project id (Modrinth: string id, CurseForge: numeric id as string) */
   id: string;
   slug: string;
@@ -41,6 +47,13 @@ export interface ModSummary {
   categories: string[];
   /** Link to the mod's page on the platform website */
   pageUrl: string;
+}
+
+export interface SearchResultPage {
+  items: ModSummary[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 /** A concrete downloadable version/file of a mod. */
@@ -167,6 +180,21 @@ export interface JavaProgress {
 /** Only exposes whether a CurseForge key exists; never returns the key itself. */
 export interface SettingsStatus {
   curseforgeConfigured: boolean;
+}
+
+export interface DiscordRpcStatus {
+  configured: boolean;
+  connected: boolean;
+  applicationId: string | null;
+  message: string;
+}
+
+export interface DiscordRpcUpdate {
+  enabled: boolean;
+  hideWhenIdle: boolean;
+  language: string;
+  details?: string;
+  state?: string;
 }
 
 /* ── Native launcher storage ───────────────────────────────────────────── */

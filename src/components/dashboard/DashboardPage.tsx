@@ -16,8 +16,6 @@ import {
   Plus,
   Shield,
   Sparkles,
-  TriangleAlert,
-  WifiOff,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -203,8 +201,6 @@ function PlayStreakWidget() {
 }
 
 function StatusWidget({ instanceCount }: { instanceCount: number }) {
-  const developerMode = useAccountStore((state) => state.mode === "developer");
-  const offlineMode = useAccountStore((state) => state.mode === "offline");
   return (
     <motion.section
       initial={{ opacity: 0, y: 12 }}
@@ -214,18 +210,11 @@ function StatusWidget({ instanceCount }: { instanceCount: number }) {
     >
       <div className="absolute top-0 right-0 h-36 w-36 rounded-full bg-midnight-500/12 blur-3xl" />
       <p className="section-kicker">Live server status</p>
-      <h2 className={`mt-1 font-display text-lg font-bold ${offlineMode ? "text-amber-200" : "text-white"}`}>{offlineMode ? "Network gate locked" : "Combat ready"}</h2>
-      {offlineMode && (
-        <div role="status" className="relative mt-4 flex items-center gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-3 text-amber-200 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.04),0_0_24px_rgb(251_191_36_/_0.08)]">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-amber-300/10"><WifiOff size={17} /></span>
-          <div><strong className="block text-xs">Multiplayer Disabled (Offline Mode)</strong><small className="text-[10px] text-amber-100/50">Only the local singleplayer launch simulation is available.</small></div>
-          <TriangleAlert size={15} className="ml-auto shrink-0" />
-        </div>
-      )}
+      <h2 className="font-display mt-1 text-lg font-bold text-white">Combat ready</h2>
       <div className="relative mt-5 grid grid-cols-2 gap-3">
         <StatusTile icon={Layers3} value={String(instanceCount).padStart(2, "0")} label="Instances" />
         <StatusTile icon={Activity} value="12 ms" label="Launcher" />
-        <StatusTile icon={Shield} value={offlineMode ? "Offline" : developerMode ? "Test" : "Secure"} label={offlineMode ? "Local identity" : developerMode ? "Developer sandbox" : "Microsoft auth"} />
+        <StatusTile icon={Shield} value="Secure" label="Microsoft auth" />
         <StatusTile icon={Zap} value="21" label="Java runtime" />
       </div>
     </motion.section>
@@ -243,11 +232,7 @@ function StatusTile({ icon: Icon, value, label }: { icon: typeof Activity; value
 }
 
 function DashboardInstanceCard({ instance, onOpen }: { instance: Instance; onOpen: (instance: Instance) => void }) {
-  const accountMode = useAccountStore((state) => state.mode);
-  const developerMode = accountMode === "developer";
-  const offlineMode = accountMode === "offline";
-  const simulationMode = developerMode || offlineMode;
-  const launch = useMutation({ mutationFn: () => api.launchInstance(instance.id, simulationMode) });
+  const launch = useMutation({ mutationFn: () => api.launchInstance(instance.id) });
   const enabledModCount = instance.mods.filter((mod) => mod.enabled).length;
   const openDetails = useCallback(() => onOpen(instance), [instance, onOpen]);
   const launchInstance = useCallback(() => launch.mutate(), [launch]);
@@ -287,11 +272,11 @@ function DashboardInstanceCard({ instance, onOpen }: { instance: Instance; onOpe
       </button>
 
       <div className="px-4 pb-4">
-        <Button className={`h-10 w-full rounded-xl ${simulationMode ? "aaa-launch-pulse" : ""}`} disabled={launch.isPending} onClick={launchInstance}>
+        <Button className="h-10 w-full rounded-xl" disabled={launch.isPending} onClick={launchInstance}>
           {launch.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <Play size={15} />}
-          {launch.isPending ? (simulationMode ? "Simulating..." : "Launching...") : (offlineMode ? "Launch singleplayer" : developerMode ? "Simulate launch" : "Play instance")}
+          {launch.isPending ? "Launching..." : "Play instance"}
         </Button>
-        {launch.isSuccess && simulationMode && <p role="status" className="mt-2 text-xs text-amber-300">{offlineMode ? "Singleplayer simulation complete." : "Simulation complete."} No game process was started.</p>}
+        {launch.isSuccess && <p role="status" className="mt-2 text-xs text-success-400">Minecraft is starting.</p>}
         {launch.isError && <p className="mt-2 text-xs text-red-400">{String(launch.error)}</p>}
       </div>
     </article>

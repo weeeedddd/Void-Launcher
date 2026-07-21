@@ -54,12 +54,9 @@ jobs:
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "Resolved release tag: $tag" >> $env:GITHUB_STEP_SUMMARY
 
-      - name: Check out release commit
+      - name: Check out release tag
         uses: actions/checkout@v4
         with:
-          # Build from the exact commit that triggered the run. On a tag push
-          # this is the tag's commit; on workflow_dispatch it's the branch tip
-          # (the tag may not exist yet — it's created in the release step below).
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
@@ -207,9 +204,6 @@ jobs:
               }
             }
           } else {
-            # --target creates the tag at this commit when it does not exist
-            # yet (workflow_dispatch path); on a tag push the tag already
-            # matches this commit. No --verify-tag, so a fresh tag is allowed.
             & gh release create $env:RELEASE_TAG @assets `
               --repo $env:GH_REPO `
               --target $env:GITHUB_SHA `

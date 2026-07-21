@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { api } from "@/lib/api";
@@ -7,6 +7,7 @@ import { ShadowGlyph, type ShadowGlyphName } from "../../../components/ShadowGly
 import { useLauncherInstance } from "../../../hooks/useLauncherInstance";
 import { useVoidClientStore } from "../../../stores/voidClient.store";
 import type { CrashLogDestination, LauncherVisibility, MissionVisibility, RpcLanguage, SettingsSection } from "../../../types";
+import type { DiscordRpcStatus } from "@/types";
 import { voidClientStyles } from "../void-client.styles";
 import { NotificationMatrix } from "./settings/NotificationMatrix";
 import { ConfirmDialog, MatrixPanel, SelectField, SettingsHeading, ShadowToggle } from "./settings/SettingsPrimitives";
@@ -77,7 +78,7 @@ export function TuningMatrixView() {
           {settingsSection === "general" && <GeneralSettings onReset={showResetConfirm} />}
           {settingsSection === "launch" && <LaunchSettings onRequestUnsafeHash={showHashConfirm} />}
           {settingsSection === "mission" && <MissionControlSettings />}
-          {settingsSection === "rpc" && <RpcSettings />}
+          {settingsSection === "rpc" && <RpcSettingsLive />}
           {settingsSection === "privacy" && <PrivacySettings />}
         </motion.section>
       </AnimatePresence>
@@ -208,7 +209,7 @@ function MissionControlSettings() {
   );
 }
 
-function RpcSettings() {
+export function RpcSettings() {
   const enabled = useVoidClientStore((state) => state.discordRpcEnabled);
   const idle = useVoidClientStore((state) => state.hideRpcWhenIdle);
   const language = useVoidClientStore((state) => state.rpcLanguage);
@@ -216,6 +217,69 @@ function RpcSettings() {
   const toggleIdle = useVoidClientStore((state) => state.toggleHideRpcWhenIdle);
   const setLanguage = useVoidClientStore((state) => state.setRpcLanguage);
   return <div><SettingsHeading eyebrow="Discord rich presence" title="Shadow Presence Relay" description="Define what the future Discord bridge may display. These preferences remain local until native RPC is connected." icon="discord" /><div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"><MatrixPanel><div className="space-y-3"><ShadowToggle title="Show Game Status on Discord" description="Publish the active instance and elapsed time when the native RPC bridge is available." enabled={enabled} onToggle={toggleEnabled} /><ShadowToggle title="Hide Rich Presence when Idle" description="Clear presence after the client becomes inactive." enabled={idle} onToggle={toggleIdle} disabled={!enabled} /></div><div className="mt-4"><SelectField id="rpc-language" label="RPC language" value={language} onChange={(value) => setLanguage(value as RpcLanguage)}><option value="english">English</option><option value="german">German</option><option value="russian">Russian</option><option value="japanese">Japanese</option><option value="korean">Korean</option><option value="spanish">Spanish</option><option value="chinese">Chinese</option><option value="polish">Polish</option></SelectField></div></MatrixPanel><MatrixPanel className="min-h-64"><p className={voidClientStyles.sectionKicker}>Presence preview</p><div className="mt-5 flex items-start gap-4 border border-[#5865f2]/20 bg-[#5865f2]/[0.055] p-5 [clip-path:polygon(0_0,97%_0,100%_13%,100%_100%,3%_100%,0_87%)]"><span className="grid size-16 shrink-0 place-items-center border border-[#7f8cff]/24 bg-[#5865f2]/14 text-[#aeb7ff] [clip-path:polygon(12%_0,100%_0,88%_100%,0_82%)]"><ShadowGlyph name="discord" size={30} /></span><div><p className="text-[9px] font-black tracking-[0.14em] text-[#8d96ff] uppercase">Playing a game</p><h3 className="mt-2 text-sm font-bold text-white">Step Beyond the Ordinary Client</h3><p className="mt-1 text-xs text-[#a7a0ad]">Eminence Protocol · Minecraft 1.21.1</p><p className="mt-4 text-[10px] text-[#776c82]">Elapsed Time: 02:45:12</p><span className={`mt-3 inline-flex items-center gap-2 text-[9px] font-black uppercase ${enabled ? "text-[#4cff9a]" : "text-[#776c82]"}`}><span className={`size-1.5 rounded-full ${enabled ? "bg-[#4cff9a]" : "bg-[#655a70]"}`} />{enabled ? "Preference enabled" : "Presence disabled"}</span></div></div></MatrixPanel></div></div>;
+}
+
+function RpcSettingsLive() {
+  const enabled = useVoidClientStore((state) => state.discordRpcEnabled);
+  const idle = useVoidClientStore((state) => state.hideRpcWhenIdle);
+  const language = useVoidClientStore((state) => state.rpcLanguage);
+  const toggleEnabled = useVoidClientStore((state) => state.toggleDiscordRpc);
+  const toggleIdle = useVoidClientStore((state) => state.toggleHideRpcWhenIdle);
+  const setLanguage = useVoidClientStore((state) => state.setRpcLanguage);
+  const [applicationId, setApplicationId] = useState("");
+  const [rpcStatus, setRpcStatus] = useState<DiscordRpcStatus | null>(null);
+  const [rpcError, setRpcError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void api.getDiscordRpcStatus().then((value) => {
+      setRpcStatus(value);
+      if (value.applicationId) setApplicationId(value.applicationId);
+    }).catch((error) => setRpcError(String(error)));
+  }, []);
+
+  const applyPresence = useCallback(async (nextEnabled: boolean, nextIdle = idle) => {
+    setBusy(true);
+    setRpcError("");
+    try {
+      const saved = await api.setDiscordClientId(applicationId || null);
+      setRpcStatus(saved);
+      const updated = await api.updateDiscordRpc({
+        enabled: nextEnabled,
+        hideWhenIdle: nextIdle,
+        language,
+        details: "Step Beyond the Ordinary Client",
+        state: "Eminence Protocol · Minecraft 1.21.1",
+      });
+      setRpcStatus(updated);
+    } catch (error) {
+      setRpcError(String(error));
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  }, [applicationId, idle, language]);
+
+  const togglePresence = useCallback(() => {
+    void applyPresence(!enabled).then(() => toggleEnabled()).catch(() => undefined);
+  }, [applyPresence, enabled, toggleEnabled]);
+
+  const toggleIdlePresence = useCallback(() => {
+    const nextIdle = !idle;
+    void api.updateDiscordRpc({ enabled, hideWhenIdle: nextIdle, language }).then((value) => {
+      toggleIdle();
+      setRpcStatus(value);
+    }).catch((error) => setRpcError(String(error)));
+  }, [enabled, idle, language, toggleIdle]);
+
+  const disconnect = useCallback(() => {
+    void api.updateDiscordRpc({ enabled: false, hideWhenIdle: false, language }).then((value) => {
+      setRpcStatus(value);
+      if (enabled) toggleEnabled();
+    }).catch((error) => setRpcError(String(error)));
+  }, [enabled, language, toggleEnabled]);
+
+  return <div><SettingsHeading eyebrow="Discord rich presence" title="Shadow Presence Relay" description="This bridge uses Discord's native local IPC. A public Discord Application ID is required; no client secret is used." icon="discord" /><div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"><MatrixPanel><div className="space-y-3"><ShadowToggle title="Show Game Status on Discord" description="Publish the active Void Launcher session through the native Discord IPC socket." enabled={enabled} onToggle={togglePresence} disabled={busy} /><ShadowToggle title="Hide Rich Presence when Idle" description="Clear presence after the client becomes inactive." enabled={idle} onToggle={toggleIdlePresence} disabled={!enabled || busy} /></div><div className="mt-5"><label htmlFor="discord-application-id" className="mb-1.5 block text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">Discord Application ID</label><input id="discord-application-id" inputMode="numeric" autoComplete="off" value={applicationId} onChange={(event) => setApplicationId(event.target.value.replace(/[^0-9]/g, "").slice(0, 20))} placeholder="17–20 digit public ID" className={voidClientStyles.input} /><p className="mt-2 text-[10px] leading-5 text-[#776c82]">Copy the Application ID from Discord Developer Portal. Never paste a client secret here.</p></div><div className="mt-4"><SelectField id="rpc-language-live" label="RPC language" value={language} onChange={(value) => setLanguage(value as RpcLanguage)}><option value="english">English</option><option value="german">German</option><option value="russian">Russian</option><option value="japanese">Japanese</option><option value="korean">Korean</option><option value="spanish">Spanish</option><option value="chinese">Chinese</option><option value="polish">Polish</option></SelectField></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void applyPresence(true).then(() => { if (!enabled) toggleEnabled(); }).catch(() => undefined)} disabled={busy || applicationId.length < 17} className={`${voidClientStyles.primaryButton} flex-1`}>{busy ? "Connecting…" : "Connect Discord RPC"}</button><button type="button" onClick={disconnect} disabled={busy || !rpcStatus?.connected} className={`${voidClientStyles.secondaryButton} flex-1`}>Disconnect</button></div>{rpcError && <p role="alert" className="mt-3 text-xs leading-5 text-red-300">{rpcError}</p>}<p className={`mt-3 text-[10px] ${rpcStatus?.connected ? "text-[#4cff9a]" : "text-[#8d8198]"}`}>{rpcStatus?.message ?? "Checking native Discord bridge…"}</p></MatrixPanel><MatrixPanel className="min-h-64"><p className={voidClientStyles.sectionKicker}>Presence preview</p><div className="mt-5 flex items-start gap-4 border border-[#5865f2]/20 bg-[#5865f2]/[0.055] p-5 [clip-path:polygon(0_0,97%_0,100%_13%,100%_100%,3%_100%,0_87%)]"><span className="grid size-16 shrink-0 place-items-center border border-[#7f8cff]/24 bg-[#5865f2]/14 text-[#aeb7ff] [clip-path:polygon(12%_0,100%_0,88%_100%,0_82%)]"><ShadowGlyph name="discord" size={30} /></span><div><p className="text-[9px] font-black tracking-[0.14em] text-[#8d96ff] uppercase">{rpcStatus?.connected ? "Live on Discord" : "Native preview"}</p><h3 className="mt-2 text-sm font-bold text-white">Step Beyond the Ordinary Client</h3><p className="mt-1 text-xs text-[#a7a0ad]">Eminence Protocol · Minecraft 1.21.1</p><p className="mt-4 text-[10px] text-[#776c82]">Elapsed time is supplied by the launcher session.</p><span className={`mt-3 inline-flex items-center gap-2 text-[9px] font-black uppercase ${rpcStatus?.connected ? "text-[#4cff9a]" : "text-[#776c82]"}`}><span className={`size-1.5 rounded-full ${rpcStatus?.connected ? "bg-[#4cff9a]" : "bg-[#655a70]"}`} />{rpcStatus?.connected ? "Presence connected" : "Not connected"}</span></div></div></MatrixPanel></div></div>;
 }
 
 function PrivacySettings() {

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { lazy, Suspense, useCallback } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { closeCurrentWindow, minimizeCurrentWindow, toggleCurrentWindowMaximized } from "@/lib/windowControls";
 import { useAccountStore } from "@/stores/account";
@@ -7,14 +7,16 @@ import { ShadowGlyph } from "../../components/ShadowGlyph";
 import { useTelemetry } from "../../hooks/useTelemetry";
 import { useVoidClientStore } from "../../stores/voidClient.store";
 import { AccountDropdown } from "./components/AccountDropdown";
-import { ChronicleView } from "./components/ChronicleView";
-import { DashboardView } from "./components/DashboardView";
-import { ModHubView } from "./components/ModHubView";
-import { TelemetryView } from "./components/TelemetryPanel";
-import { TuningMatrixView } from "./components/TuningMatrixView";
 import { CommandDeck } from "./components/CommandDeck";
 import { CrashScreen, VoidRuntimeBoundary } from "../crash-screen";
 import { voidClientStyles } from "./void-client.styles";
+
+const DashboardView = lazy(() => import("./components/DashboardView").then((module) => ({ default: module.DashboardView })));
+const DeploymentVaultView = lazy(() => import("./components/DeploymentVaultView").then((module) => ({ default: module.DeploymentVaultView })));
+const ModHubView = lazy(() => import("./components/ModHubView").then((module) => ({ default: module.ModHubView })));
+const TelemetryView = lazy(() => import("./components/TelemetryPanel").then((module) => ({ default: module.TelemetryView })));
+const TuningMatrixView = lazy(() => import("./components/TuningMatrixView").then((module) => ({ default: module.TuningMatrixView })));
+const ChronicleView = lazy(() => import("./components/ChronicleView").then((module) => ({ default: module.ChronicleView })));
 
 export function VoidClient() {
   const activeView = useVoidClientStore((state) => state.activeView);
@@ -93,14 +95,34 @@ function VoidClientSurface() {
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
             className="min-h-full"
           >
-            {activeView === "dashboard" && <DashboardView snapshot={snapshot} />}
-            {activeView === "mods" && <ModHubView />}
-            {activeView === "telemetry" && <TelemetryView snapshot={snapshot} />}
-            {activeView === "settings" && <TuningMatrixView />}
-            {activeView === "chronicle" && <ChronicleView />}
+            <Suspense fallback={<ViewLoadingState />}>
+              {activeView === "dashboard" && <DashboardView snapshot={snapshot} />}
+              {activeView === "deployments" && <DeploymentVaultView />}
+              {activeView === "mods" && <ModHubView />}
+              {activeView === "telemetry" && <TelemetryView snapshot={snapshot} />}
+              {activeView === "settings" && <TuningMatrixView />}
+              {activeView === "chronicle" && <ChronicleView />}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>
+    </div>
+  );
+}
+
+function ViewLoadingState() {
+  return (
+    <div className={`${voidClientStyles.page} grid min-h-[55vh] place-items-center`} role="status" aria-live="polite">
+      <div className="text-center">
+        <motion.span
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.15, repeat: Infinity, ease: "linear" }}
+          className="mx-auto grid size-12 place-items-center border border-[#a855f7]/38 bg-[#7B2CBF]/12 text-[#d8b4fe] shadow-[0_0_28px_rgba(123,44,191,0.28)] [clip-path:polygon(18%_0,100%_0,82%_100%,0_100%)]"
+        >
+          <ShadowGlyph name="spark" size={22} />
+        </motion.span>
+        <p className="mt-4 text-[9px] font-black tracking-[0.2em] text-[#a98abf] uppercase">Synchronizing Void sector</p>
+      </div>
     </div>
   );
 }
@@ -114,13 +136,9 @@ interface IVoidTitleBarProps {
 }
 
 function VoidTitleBar({ activeSection, accountMode, onMinimize, onMaximize, onClose }: IVoidTitleBarProps) {
-  const status = accountMode === "offline"
-    ? { label: "Offline singleplayer", tone: "text-amber-300", dot: "bg-amber-300" }
-    : accountMode === "microsoft"
-      ? { label: "Microsoft verified", tone: "text-[#4cff9a]", dot: "bg-[#4cff9a]" }
-      : accountMode === "developer"
-        ? { label: "Developer simulation", tone: "text-[#86a8ff]", dot: "bg-[#86a8ff]" }
-        : { label: "Identity required", tone: "text-[#776c82]", dot: "bg-[#655a70]" };
+  const status = accountMode === "microsoft"
+    ? { label: "Microsoft verified", tone: "text-[#4cff9a]", dot: "bg-[#4cff9a]" }
+    : { label: "Identity required", tone: "text-[#a79bad]", dot: "bg-[#655a70]" };
 
   return (
     <header data-tauri-drag-region className={voidClientStyles.titleBar} onDoubleClick={onMaximize}>

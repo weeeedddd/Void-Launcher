@@ -41,6 +41,7 @@ export interface IVoidClientUiState {
   autoUploadCrashLogs: boolean;
   crashLogDestination: CrashLogDestination;
   crashScreenOpen: boolean;
+  launchLoadUntil: number;
   setActiveView: (view: VoidView) => void;
   setSettingsSection: (section: SettingsSection) => void;
   setRamGb: (ramGb: number) => void;
@@ -54,6 +55,7 @@ export interface IVoidClientUiState {
   setRpcLanguage: (language: RpcLanguage) => void;
   setCrashLogDestination: (destination: CrashLogDestination) => void;
   setCrashScreenOpen: (open: boolean) => void;
+  signalLaunchLoad: (durationMs: number) => void;
   toggleAnimatedRunes: () => void;
   toggleMinimizeOnLaunch: () => void;
   toggleAutoConnectVoice: () => void;
@@ -125,6 +127,7 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         ...SETTINGS_DEFAULTS,
         activeView: state.activeView,
         crashScreenOpen: false,
+        launchLoadUntil: 0,
         notifications: { ...DEFAULT_NOTIFICATIONS },
       }));
 
@@ -133,6 +136,7 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         ...SETTINGS_DEFAULTS,
         notifications: { ...DEFAULT_NOTIFICATIONS },
         crashScreenOpen: false,
+        launchLoadUntil: 0,
         setActiveView: (activeView) => set({ activeView }),
         setSettingsSection: (settingsSection) => set({ settingsSection }),
         setRamGb: (ramGb) => set({ ramGb: Math.min(32, Math.max(2, Math.round(ramGb))) }),
@@ -156,6 +160,9 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         setRpcLanguage: (rpcLanguage) => set({ rpcLanguage }),
         setCrashLogDestination: (crashLogDestination) => set({ crashLogDestination }),
         setCrashScreenOpen: (crashScreenOpen) => set({ crashScreenOpen }),
+        signalLaunchLoad: (durationMs) => set((state) => ({
+          launchLoadUntil: Math.max(state.launchLoadUntil, Date.now() + Math.max(0, durationMs)),
+        })),
         toggleAnimatedRunes: () => set((state) => ({ animatedRunes: !state.animatedRunes })),
         toggleMinimizeOnLaunch: () => set((state) => ({ minimizeOnLaunch: !state.minimizeOnLaunch })),
         toggleAutoConnectVoice: () => set((state) => ({ autoConnectVoice: !state.autoConnectVoice })),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ITelemetrySnapshot } from "../types";
+import { useVoidClientStore } from "../stores/voidClient.store";
 
 const HISTORY_LENGTH = 26;
 
@@ -18,6 +19,7 @@ const INITIAL_SNAPSHOT: ITelemetrySnapshot = {
   ram: 57,
   ping: 24,
   fps: 238,
+  launchLoadActive: false,
   cpuHistory: buildInitialHistory(34, 12),
   ramHistory: buildInitialHistory(57, 7),
 };
@@ -29,8 +31,11 @@ export function useTelemetry() {
     let tick = 0;
     const interval = window.setInterval(() => {
       tick += 1;
-      const cpu = clampMetric(38 + Math.sin(tick * 0.71) * 17 + Math.sin(tick * 0.19) * 8, 8, 91);
-      const ram = clampMetric(58 + Math.sin(tick * 0.31) * 6 + Math.cos(tick * 0.13) * 3, 38, 79);
+      const launchLoadActive = Date.now() < useVoidClientStore.getState().launchLoadUntil;
+      const cpuCenter = launchLoadActive ? 78 : 38;
+      const ramCenter = launchLoadActive ? 76 : 58;
+      const cpu = clampMetric(cpuCenter + Math.sin(tick * 1.37) * (launchLoadActive ? 16 : 17) + Math.sin(tick * 0.19) * 8, 8, 98);
+      const ram = clampMetric(ramCenter + Math.sin(tick * 0.71) * (launchLoadActive ? 8 : 6) + Math.cos(tick * 0.13) * 3, 38, 94);
       const ping = clampMetric(42 + Math.sin(tick * 0.47) * 27 + Math.cos(tick * 0.21) * 12, 18, 104);
       const fps = clampMetric(238 - cpu * 0.72 + Math.sin(tick * 0.37) * 18, 116, 276);
 
@@ -39,6 +44,7 @@ export function useTelemetry() {
         ram,
         ping,
         fps,
+        launchLoadActive,
         cpuHistory: [...previous.cpuHistory.slice(-(HISTORY_LENGTH - 1)), cpu],
         ramHistory: [...previous.ramHistory.slice(-(HISTORY_LENGTH - 1)), ram],
       }));

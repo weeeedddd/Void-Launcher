@@ -3,7 +3,9 @@
 
 use tauri::State;
 
-use super::{curseforge, modrinth, ModLoader, ModSummary, ModVersionInfo, Platform, SearchParams};
+use super::{
+    curseforge, modrinth, ModLoader, ModVersionInfo, Platform, SearchParams, SearchResultPage,
+};
 use crate::error::LauncherError;
 use crate::state::AppState;
 
@@ -24,7 +26,7 @@ pub(crate) fn require_curseforge_key(state: &AppState) -> Result<String, Launche
 pub async fn search_mods(
     state: State<'_, AppState>,
     params: SearchParams,
-) -> Result<Vec<ModSummary>, LauncherError> {
+) -> Result<SearchResultPage, LauncherError> {
     match params.platform {
         Platform::Modrinth => modrinth::search(&state.http, &params).await,
         Platform::Curseforge => {

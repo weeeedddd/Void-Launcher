@@ -6,7 +6,10 @@
 
 use serde::Deserialize;
 
-use super::{ModLoader, ModSummary, ModVersionInfo, Platform, SearchParams};
+use super::{
+    ModLoader, ModSummary, ModVersionInfo, Platform, ProjectType, SearchParams,
+    SearchResultPage, SearchSort,
+};
 use crate::error::LauncherError;
 
 const BASE: &str = "https://api.modrinth.com/v2";
@@ -16,6 +19,9 @@ const BASE: &str = "https://api.modrinth.com/v2";
 #[derive(Debug, Deserialize)]
 struct SearchResponse {
     hits: Vec<SearchHit>,
+    total_hits: u64,
+    offset: u32,
+    limit: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +36,7 @@ struct SearchHit {
     /// The curated category list shown on the website (excludes loaders).
     #[serde(default)]
     display_categories: Vec<String>,
+    project_type: ProjectType,
 }
 
 /// Search projects. Filtering works via "facets" — a JSON array of arrays
@@ -42,8 +49,12 @@ struct SearchHit {
 pub async fn search(
     http: &reqwest::Client,
     params: &SearchParams,
-) -> Result<Vec<ModSummary>, LauncherError> {
-    let mut facets: Vec<Vec<String>> = vec![vec!["project_type:mod".to_string()]];
+) -> Result<SearchResultPage, LauncherError> {
+    let limit = params.limit.clamp(1, 100);
+    let mut facets: Vec<Vec<String>> = vec![vec![format!(
+        "project_type:{}",
+        params.project_type.as_str()
+    )]];
     if let Some(version) = &params.game_version {
         facets.push(vec![format!("versions:{version}")]);
     }
@@ -53,9 +64,17 @@ pub async fn search(
 
     let query: Vec<(&str, String)> = vec![
         ("query", params.query.clone()),
-        ("limit", params.limit.to_string()),
+        ("limit", limit.to_string()),
         ("offset", params.offset.to_string()),
-        ("index", "relevance".to_string()), // or: downloads, newest, updated
+        (
+            "index",
+            match params.sort {
+                SearchSort::Relevance | SearchSort::Name => "relevance",
+                SearchSort::Downloads => "downloads",
+                SearchSort::Updated => "updated",
+            }
+            .to_string(),
+        ),
         ("facets", serde_json::to_string(&facets)?),
     ];
 
@@ -68,13 +87,18 @@ pub async fn search(
         .json()
         .await?;
 
-    Ok(resp
+    let mut items: Vec<ModSummary> = resp
         .hits
         .into_iter()
         .map(|hit| {
-            let page_url = format!("https://modrinth.com/mod/{}", hit.slug);
+            let page_url = format!(
+                "https://modrinth.com/{}/{}",
+                hit.project_type.page_segment(),
+                hit.slug
+            );
             ModSummary {
                 platform: Platform::Modrinth,
+                project_type: hit.project_type,
                 id: hit.project_id,
                 slug: hit.slug,
                 name: hit.title,
@@ -86,7 +110,18 @@ pub async fn search(
                 page_url,
             }
         })
-        .collect())
+        .collect();
+
+    if params.sort == SearchSort::Name {
+        items.sort_by_key(|item| item.name.to_lowercase());
+    }
+
+    Ok(SearchResultPage {
+        items,
+        total: resp.total_hits,
+        offset: resp.offset,
+        limit: resp.limit,
+    })
 }
 
 // ── Versions ────────────────────────────────────────────────────────────

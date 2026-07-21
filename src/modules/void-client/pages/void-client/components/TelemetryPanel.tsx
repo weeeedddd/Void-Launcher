@@ -31,21 +31,21 @@ export const TelemetryPanel = memo(function TelemetryPanel({ snapshot, expanded 
           <p className={voidClientStyles.sectionKicker}>Real-time telemetry</p>
           <h2 id={`telemetry-title-${reactId}`} className="font-display mt-1 text-lg font-black">Performance Matrix</h2>
         </div>
-        <div className={`flex items-center gap-2 text-[9px] font-black tracking-[0.12em] uppercase ${ping.text}`}>
+        <div className={`flex items-center gap-2 text-[9px] font-black tracking-[0.12em] uppercase ${snapshot.launchLoadActive ? "text-[#d8b4fe]" : ping.text}`}>
           <motion.span
             animate={reducedMotion ? undefined : { scale: [1, 1.65, 1], opacity: [1, 0.45, 1] }}
             transition={{ duration: 1.35, repeat: Infinity, ease: "easeInOut" }}
-            className={`size-1.5 rounded-full ${ping.dot}`}
+            className={`size-1.5 rounded-full ${snapshot.launchLoadActive ? "bg-[#bd7aff] shadow-[0_0_16px_rgba(189,122,255,0.95)]" : ping.dot}`}
           />
-          {ping.label} · {snapshot.ping} ms
+          {snapshot.launchLoadActive ? "Instance boot surge" : `${ping.label} · ${snapshot.ping} ms`}
         </div>
       </header>
 
       <div className={`relative mt-5 grid gap-3 ${expanded ? "sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-2"}`}>
-        <MetricTile icon="cpu" label="CPU Load" value={`${snapshot.cpu}%`} accent="violet" />
-        <MetricTile icon="ram" label="RAM Usage" value={`${snapshot.ram}%`} accent="blue" />
-        {expanded && <MetricTile icon="telemetry" label="Frame Rate" value={`${snapshot.fps}`} suffix="FPS" accent="green" />}
-        {expanded && <MetricTile icon="server" label="Route Latency" value={`${snapshot.ping}`} suffix="MS" accent={snapshot.ping > 75 ? "violet" : snapshot.ping > 45 ? "amber" : "green"} />}
+        <MetricTile icon="cpu" label="CPU Load" value={snapshot.cpu} suffix="%" accent="violet" launchLoadActive={snapshot.launchLoadActive} />
+        <MetricTile icon="ram" label="RAM Usage" value={snapshot.ram} suffix="%" accent="blue" launchLoadActive={snapshot.launchLoadActive} />
+        {expanded && <MetricTile icon="telemetry" label="Frame Rate" value={snapshot.fps} suffix="FPS" accent="green" launchLoadActive={false} />}
+        {expanded && <MetricTile icon="server" label="Route Latency" value={snapshot.ping} suffix="MS" accent={snapshot.ping > 75 ? "violet" : snapshot.ping > 45 ? "amber" : "green"} launchLoadActive={false} />}
       </div>
 
       <div className={`relative mt-5 grid gap-3 ${expanded ? "lg:grid-cols-2" : "grid-cols-1"}`}>
@@ -64,7 +64,7 @@ export const TelemetryPanel = memo(function TelemetryPanel({ snapshot, expanded 
   );
 });
 
-function MetricTile({ icon, label, value, suffix, accent }: { icon: ShadowGlyphName; label: string; value: string; suffix?: string; accent: "violet" | "blue" | "green" | "amber" }) {
+function MetricTile({ icon, label, value, suffix, accent, launchLoadActive }: { icon: ShadowGlyphName; label: string; value: number; suffix?: string; accent: "violet" | "blue" | "green" | "amber"; launchLoadActive: boolean }) {
   const tones = {
     violet: "border-[#a855f7]/20 bg-[#7B2CBF]/8 text-[#d8b4fe]",
     blue: "border-[#4c6fdc]/20 bg-[#263f92]/8 text-[#86a8ff]",
@@ -72,14 +72,14 @@ function MetricTile({ icon, label, value, suffix, accent }: { icon: ShadowGlyphN
     amber: "border-amber-300/18 bg-amber-300/[0.055] text-amber-300",
   } as const;
   return (
-    <div className={`rounded-2xl border p-3.5 ${tones[accent]}`}>
+    <motion.div animate={launchLoadActive ? { boxShadow: ["0 0 0 rgba(123,44,191,0)", "0 0 28px rgba(123,44,191,0.24)", "0 0 0 rgba(123,44,191,0)"] } : { boxShadow: "0 0 0 rgba(123,44,191,0)" }} transition={{ duration: 1.15, repeat: launchLoadActive ? Infinity : 0 }} className={`rounded-2xl border p-3.5 ${tones[accent]}`}>
       <div className="flex items-center justify-between">
         <ShadowGlyph name={icon} size={16} className="filter drop-shadow-[0_0_7px_currentColor]" />
         <span className="text-[8px] font-black tracking-[0.14em] text-[#655a70] uppercase">Live</span>
       </div>
-      <p className="mt-4 text-xl font-black tabular-nums text-white">{value} {suffix && <small className="text-[9px] tracking-[0.1em] text-[#776c82]">{suffix}</small>}</p>
+      <p className="mt-4 text-xl font-black tabular-nums text-white"><motion.span key={value} initial={{ opacity: 0.4, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>{value}</motion.span>{suffix && <small className="ml-1 text-[9px] tracking-[0.1em] text-[#a79bad]">{suffix}</small>}</p>
       <p className="mt-0.5 text-[10px] text-[#776c82]">{label}</p>
-    </div>
+    </motion.div>
   );
 }
 

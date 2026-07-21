@@ -903,7 +903,7 @@ function InstallerFooter({
         ) : null}
         {state === "DONE" ? (
           <button type="button" className={styles.primaryButton} onClick={() => void onFinish()}>
-            Finish &amp; Start Void Launcher
+            Awaken Void
             <ShadowGlyph name="launch" size={16} className="transition-transform duration-200 group-hover:translate-x-1" />
           </button>
         ) : null}

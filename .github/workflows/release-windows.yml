@@ -32,6 +32,10 @@ jobs:
       CARGO_INCREMENTAL: "0"
       RUST_BACKTRACE: "1"
       RUST_TARGET: x86_64-pc-windows-msvc
+      # Optional repository secret. Google installed-app credentials are
+      # compiled only for release builds; an absent value leaves YouTube
+      # linking disabled with an explicit runtime error.
+      VOID_GOOGLE_CLIENT_SECRET: ${{ secrets.VOID_GOOGLE_CLIENT_SECRET }}
 
     steps:
       - name: Resolve and validate release tag
@@ -91,6 +95,43 @@ jobs:
 
       - name: Install frontend workspace dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Verify release version consistency
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $clientPackage = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          $bootstrapperPackage = (Get-Content -LiteralPath "bootstrapper/package.json" -Raw | ConvertFrom-Json).version
+          $clientTauri = (Get-Content -LiteralPath "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+          $bootstrapperTauri = (Get-Content -LiteralPath "bootstrapper/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+          $clientCargo = [regex]::Match((Get-Content -LiteralPath "src-tauri/Cargo.toml" -Raw), '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $bootstrapperCargo = [regex]::Match((Get-Content -LiteralPath "bootstrapper/src-tauri/Cargo.toml" -Raw), '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $versions = @($clientPackage, $bootstrapperPackage, $clientTauri, $bootstrapperTauri, $clientCargo, $bootstrapperCargo)
+          $uniqueVersions = @($versions | Sort-Object -Unique)
+          if ($uniqueVersions.Count -ne 1) {
+            throw "Client and Bootstrapper manifest versions differ: $($versions -join ', ')"
+          }
+          if ($env:RELEASE_TAG -ne "v$clientPackage") {
+            throw "Release tag $env:RELEASE_TAG does not match manifest version v$clientPackage."
+          }
+          "Verified manifest version: $clientPackage" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Verify frontend type safety
+        run: npm run typecheck:all
+
+      - name: Run native unit tests
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $env:GITHUB_WORKSPACE "target-client"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --target $env:RUST_TARGET
+          if ($LASTEXITCODE -ne 0) {
+            throw "Void Client native tests failed with exit code $LASTEXITCODE."
+          }
+
+          $env:CARGO_TARGET_DIR = Join-Path $env:GITHUB_WORKSPACE "target-bootstrapper"
+          cargo test --locked --manifest-path bootstrapper/src-tauri/Cargo.toml --target $env:RUST_TARGET
+          if ($LASTEXITCODE -ne 0) {
+            throw "Void Bootstrapper native tests failed with exit code $LASTEXITCODE."
+          }
 
       - name: Build production main client executable
         run: |

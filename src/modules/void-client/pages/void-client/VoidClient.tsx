@@ -1,66 +1,36 @@
 import { lazy, Suspense, useCallback, useEffect } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { api } from "@/lib/api";
+import { Bell, Maximize2, Minus, X } from "lucide-react";
 import { closeCurrentWindow, minimizeCurrentWindow, toggleCurrentWindowMaximized } from "@/lib/windowControls";
 import { useAccountStore } from "@/stores/account";
 import { NAVIGATION_ITEMS } from "../../constants";
 import { ShadowGlyph } from "../../components/ShadowGlyph";
+import { useDiscordRpcRuntime } from "../../hooks/useDiscordRpcRuntime";
 import { translatedViewLabel } from "../../i18n";
-import { useTelemetry } from "../../hooks/useTelemetry";
 import { useVoidClientStore } from "../../stores/voidClient.store";
 import { AccountDropdown } from "./components/AccountDropdown";
-import { CommandDeck } from "./components/CommandDeck";
-import { LanguageControl } from "./components/LanguageControl";
 import { MissionControl } from "./components/MissionControl";
-import { CrashScreen, VoidRuntimeBoundary } from "../crash-screen";
+import { VoidSidebar } from "./components/VoidSidebar";
+import { LauncherNotificationRuntime } from "../../notifications/LauncherNotificationRuntime";
+import { VoidRuntimeBoundary } from "../crash-screen";
 import { voidClientStyles } from "./void-client.styles";
 
-const DashboardView = lazy(() => import("./components/DashboardView").then((module) => ({ default: module.DashboardView })));
+const MainDashboard = lazy(() => import("./components/MainDashboard").then((module) => ({ default: module.MainDashboard })));
 const DeploymentVaultView = lazy(() => import("./components/DeploymentVaultView").then((module) => ({ default: module.DeploymentVaultView })));
 const ModHubView = lazy(() => import("./components/ModHubView").then((module) => ({ default: module.ModHubView })));
 const TelemetryView = lazy(() => import("./components/TelemetryPanel").then((module) => ({ default: module.TelemetryView })));
 const TuningMatrixView = lazy(() => import("./components/TuningMatrixView").then((module) => ({ default: module.TuningMatrixView })));
 const ChronicleView = lazy(() => import("./components/ChronicleView").then((module) => ({ default: module.ChronicleView })));
-const ShadowSystemsView = lazy(() => import("./components/ShadowSystemsView").then((module) => ({ default: module.ShadowSystemsView })));
 
 export function VoidClient() {
   const activeView = useVoidClientStore((state) => state.activeView);
   const setActiveView = useVoidClientStore((state) => state.setActiveView);
-  const crashScreenOpen = useVoidClientStore((state) => state.crashScreenOpen);
-  const setCrashScreenOpen = useVoidClientStore((state) => state.setCrashScreenOpen);
-  const automaticallyUploadLogs = useVoidClientStore((state) => state.autoUploadCrashLogs);
-  const storedDestination = useVoidClientStore((state) => state.crashLogDestination);
-  const logDestination = storedDestination === "mc-logs" ? "MC-Logs.gs" : "Void Logs Native";
-  const closeCrashPreview = useCallback(() => setCrashScreenOpen(false), [setCrashScreenOpen]);
-  const retryCrashPreview = useCallback(() => {
-    setActiveView("dashboard");
-    setCrashScreenOpen(false);
-  }, [setActiveView, setCrashScreenOpen]);
-
-  if (crashScreenOpen) {
-    return (
-      <CrashScreen
-        error="java.lang.IllegalStateException: Preview launch integrity check failed"
-        diagnosis="A required client asset could not be verified before the game process started."
-        possibleFix="Run the local recovery preview, then retry from the dashboard."
-        automaticallyUploadLogs={automaticallyUploadLogs}
-        logDestination={logDestination}
-        repairSource="local-preview"
-        onRetry={retryCrashPreview}
-        onReturn={closeCrashPreview}
-      />
-    );
-  }
 
   return (
     <VoidRuntimeBoundary
       resetKey={activeView}
       onReset={() => setActiveView("dashboard")}
-      crashScreenProps={{
-        automaticallyUploadLogs,
-        logDestination,
-        repairSource: "local-preview",
-      }}
     >
       <VoidClientSurface />
     </VoidRuntimeBoundary>
@@ -69,67 +39,66 @@ export function VoidClient() {
 
 function VoidClientSurface() {
   const activeView = useVoidClientStore((state) => state.activeView);
+  const setActiveView = useVoidClientStore((state) => state.setActiveView);
+  const setSettingsSection = useVoidClientStore((state) => state.setSettingsSection);
   const restoreSession = useAccountStore((state) => state.restoreSession);
   const language = useVoidClientStore((state) => state.language);
-  const discordRpcEnabled = useVoidClientStore((state) => state.discordRpcEnabled);
-  const hideRpcWhenIdle = useVoidClientStore((state) => state.hideRpcWhenIdle);
-  const rpcLanguage = useVoidClientStore((state) => state.rpcLanguage);
-  const snapshot = useTelemetry();
-  const reduceMotion = useReducedMotion();
+  const animatedRunes = useVoidClientStore((state) => state.animatedRunes);
+  const reduceMotion = Boolean(useReducedMotion());
   const activeNavigation = NAVIGATION_ITEMS.find((item) => item.id === activeView);
+  useDiscordRpcRuntime();
 
   useEffect(() => {
-    void restoreSession();
+    if (!isTauri()) return;
+    void restoreSession().catch(() => undefined);
   }, [restoreSession]);
-
-  useEffect(() => {
-    if (!discordRpcEnabled) return;
-    void api
-      .updateDiscordRpc({
-        enabled: true,
-        hideWhenIdle: hideRpcWhenIdle,
-        language: rpcLanguage,
-        details: "Step Beyond the Ordinary Client",
-        state: "In the Void Launcher",
-      })
-      .catch(() => undefined);
-  }, [discordRpcEnabled, hideRpcWhenIdle, rpcLanguage]);
 
   const minimize = useCallback(minimizeCurrentWindow, []);
   const toggleMaximize = useCallback(toggleCurrentWindowMaximized, []);
   const close = useCallback(closeCurrentWindow, []);
+  const openNotificationSettings = useCallback(() => {
+    setSettingsSection("mission");
+    setActiveView("settings");
+  }, [setActiveView, setSettingsSection]);
 
   return (
     <div className={voidClientStyles.shell}>
-      <AmbientShadowField reducedMotion={Boolean(reduceMotion)} />
+      <a
+        href="#void-main-content"
+        className="fixed top-2 left-16 z-[600] -translate-y-16 rounded-none border border-[#333333] bg-[#7B2CBF] px-4 py-2 text-sm font-semibold text-white transition-transform focus:translate-y-0"
+      >
+        Skip to main content
+      </a>
+
       <VoidTitleBar
         activeSection={activeNavigation ? translatedViewLabel(language, activeNavigation.id) : translatedViewLabel(language, "dashboard")}
+        nativeRuntime={isTauri()}
         onMinimize={minimize}
         onMaximize={toggleMaximize}
         onClose={close}
+        onOpenNotifications={openNotificationSettings}
       />
-      <CommandDeck />
-      <LanguageControl />
+      <VoidSidebar />
       <MissionControl />
+      <LauncherNotificationRuntime />
 
-      <main className={voidClientStyles.main}>
+      <main id="void-main-content" className={`${voidClientStyles.main} ${activeView === "dashboard" ? "overflow-hidden" : "overflow-y-auto"}`} tabIndex={-1}>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={activeView}
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, filter: "blur(4px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8, filter: "blur(3px)" }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className="min-h-full"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion || !animatedRunes ? 0 : 0.15 }}
+            className={activeView === "dashboard" ? "h-full min-h-0" : "min-h-full"}
           >
             <Suspense fallback={<ViewLoadingState />}>
-              {activeView === "dashboard" && <DashboardView snapshot={snapshot} />}
+              {activeView === "dashboard" && <MainDashboard />}
               {activeView === "deployments" && <DeploymentVaultView />}
               {activeView === "mods" && <ModHubView />}
-              {activeView === "telemetry" && <TelemetryView snapshot={snapshot} />}
+              {activeView === "telemetry" && <TelemetryView />}
               {activeView === "settings" && <TuningMatrixView />}
               {activeView === "chronicle" && <ChronicleView />}
-              {activeView === "systems" && <ShadowSystemsView />}
             </Suspense>
           </motion.div>
         </AnimatePresence>
@@ -142,14 +111,10 @@ function ViewLoadingState() {
   return (
     <div className={`${voidClientStyles.page} grid min-h-[55vh] place-items-center`} role="status" aria-live="polite">
       <div className="text-center">
-        <motion.span
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1.15, repeat: Infinity, ease: "linear" }}
-          className="mx-auto grid size-12 place-items-center border border-[#a855f7]/38 bg-[#7B2CBF]/12 text-[#d8b4fe] shadow-[0_0_28px_rgba(123,44,191,0.28)] [clip-path:polygon(18%_0,100%_0,82%_100%,0_100%)]"
-        >
-          <ShadowGlyph name="spark" size={22} />
-        </motion.span>
-        <p className="mt-4 text-[10px] font-semibold tracking-[0.08em] text-[#b8a8c1]">Loading launcher view…</p>
+        <span className="mx-auto grid size-11 place-items-center rounded-none border border-[#333333] bg-[#7B2CBF] text-white">
+          <ShadowGlyph name="spark" size={20} />
+        </span>
+        <p className="mt-4 text-sm font-medium text-[#A3A3A3]">Loading launcher view...</p>
       </div>
     </div>
   );
@@ -157,71 +122,54 @@ function ViewLoadingState() {
 
 interface IVoidTitleBarProps {
   activeSection: string;
+  nativeRuntime: boolean;
   onMinimize: () => void;
   onMaximize: () => void;
   onClose: () => void;
+  onOpenNotifications: () => void;
 }
 
-function VoidTitleBar({ activeSection, onMinimize, onMaximize, onClose }: IVoidTitleBarProps) {
+function VoidTitleBar({ activeSection, nativeRuntime, onMinimize, onMaximize, onClose, onOpenNotifications }: IVoidTitleBarProps) {
   return (
     <header data-tauri-drag-region className={voidClientStyles.titleBar} onDoubleClick={onMaximize}>
-      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[#9d5ce0]/35 bg-[#050505] shadow-[0_0_26px_rgba(123,44,191,0.26)]">
-          <img
-            src="/void-shadow-blade-app-icon.png"
-            alt=""
-            aria-hidden="true"
-            className="size-full object-cover"
-          />
-        </span>
-        <span data-tauri-drag-region className="min-w-0">
-          <strong className="font-display block truncate text-xs font-black tracking-[0.16em] text-white">VOID LAUNCHER</strong>
-          <small className="mt-0.5 block truncate text-[10px] font-semibold tracking-[0.1em] text-[#9f93a8] uppercase">{activeSection}</small>
-        </span>
+      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center justify-between gap-4 px-3">
+        <div data-tauri-drag-region className="flex min-w-0 items-center gap-4">
+          <strong data-tauri-drag-region className="truncate text-sm font-bold text-[#F4F4F5]">VOID <span className="font-semibold text-[#A855F7]">Launcher</span></strong>
+          <span data-tauri-drag-region className="hidden h-7 items-center gap-2 rounded-lg border border-[#25252B] bg-[#141417] px-2.5 sm:inline-flex" role="status">
+            <span className={`size-2 rounded-full ${nativeRuntime ? "bg-[#22C55E]" : "bg-[#F59E0B]"}`} aria-hidden="true" />
+            <span className="text-[10px] font-semibold text-[#A1A1AA]">{nativeRuntime ? "Core Online" : "Web Preview"}</span>
+          </span>
+          <span data-tauri-drag-region className="hidden h-4 w-px bg-[#29292F] sm:block" aria-hidden="true" />
+          <span data-tauri-drag-region className="hidden text-xs font-medium text-[#71717A] sm:block">{activeSection}</span>
+        </div>
+        <div className="flex items-center gap-3" onDoubleClick={(event) => event.stopPropagation()}>
+          <button type="button" onClick={onOpenNotifications} aria-label="Open notification settings" title="Notification settings" className="grid size-10 cursor-pointer place-items-center rounded-lg text-[#777780] transition-colors hover:bg-[#17171B] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8B5CF6]"><Bell size={17} strokeWidth={1.7} /></button>
+          <AccountDropdown />
+        </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-2" onDoubleClick={(event) => event.stopPropagation()}>
-        <AccountDropdown />
-        <div className="flex items-center gap-0.5 border-l border-white/[0.07] pl-2">
-          <WindowControl label="Minimize" glyph="minimize" onClick={onMinimize} />
-          <WindowControl label="Maximize" glyph="maximize" onClick={onMaximize} />
-          <WindowControl label="Close" glyph="close" onClick={onClose} danger />
-        </div>
+      <div className="flex h-full items-center" onDoubleClick={(event) => event.stopPropagation()}>
+        <WindowControl label="Minimize" kind="minimize" onClick={onMinimize} />
+        <WindowControl label="Maximize" kind="maximize" onClick={onMaximize} />
+        <WindowControl label="Close" kind="close" onClick={onClose} danger />
       </div>
     </header>
   );
 }
 
-function WindowControl({ label, glyph, onClick, danger = false }: { label: string; glyph: "minimize" | "maximize" | "close"; onClick: () => void; danger?: boolean }) {
+function WindowControl({ label, kind, onClick, danger = false }: { label: string; kind: "minimize" | "maximize" | "close"; onClick: () => void; danger?: boolean }) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={`grid size-9 cursor-pointer place-items-center rounded-xl transition focus-visible:outline-2 focus-visible:outline-[#9d5ce0] ${danger ? "text-[#655a70] hover:bg-red-500/15 hover:text-red-300" : "text-[#655a70] hover:bg-white/[0.05] hover:text-white"}`}
+      className={`grid h-full w-10 cursor-pointer place-items-center border-l border-[#222222] transition-colors duration-150 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#8B5CF6] ${danger ? "text-[#777777] hover:bg-[#B91C1C] hover:text-white" : "text-[#777777] hover:bg-[#171717] hover:text-white"}`}
     >
-      <ShadowGlyph name={glyph} size={14} className="filter drop-shadow-[0_0_5px_currentColor]" />
+      {kind === "minimize" ? <Minus size={14} strokeWidth={1.6} /> : null}
+      {kind === "maximize" ? <Maximize2 size={13} strokeWidth={1.6} /> : null}
+      {kind === "close" ? <X size={14} strokeWidth={1.6} /> : null}
     </button>
-  );
-}
-
-function AmbientShadowField({ reducedMotion }: { reducedMotion: boolean }) {
-  return (
-    <div className={voidClientStyles.ambient} aria-hidden="true">
-      <motion.div
-        animate={reducedMotion ? undefined : { x: [0, 48, -18, 0], y: [0, -28, 18, 0], opacity: [0.18, 0.32, 0.2, 0.18] }}
-        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute -top-44 left-[18%] size-[560px] rounded-full bg-[#5b21b6]/20 blur-[150px]"
-      />
-      <motion.div
-        animate={reducedMotion ? undefined : { x: [0, -38, 24, 0], y: [0, 22, -18, 0], opacity: [0.12, 0.24, 0.14, 0.12] }}
-        transition={{ duration: 19, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute right-[-8%] bottom-[-28%] size-[720px] rounded-full bg-[#1e3a8a]/18 blur-[180px]"
-      />
-      <div className="absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(168,85,247,0.11)_1px,transparent_1px),linear-gradient(90deg,rgba(168,85,247,0.11)_1px,transparent_1px)] [background-size:46px_46px] [mask-image:radial-gradient(circle_at_60%_30%,black,transparent_72%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_58%_25%,transparent,rgba(5,5,5,0.42)_55%,#050505_100%)]" />
-    </div>
   );
 }
 

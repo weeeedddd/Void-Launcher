@@ -98,7 +98,7 @@ pub fn default_install_path() -> PathBuf {
         let local_app_data = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
-        return local_app_data.join("Programs").join("Void Launcher");
+        local_app_data.join("Programs").join("Void Launcher")
     }
 
     #[cfg(target_os = "macos")]
@@ -318,7 +318,7 @@ fn build_http_client() -> Result<Client, BootstrapError> {
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .redirect(redirect_policy)
-        .user_agent("Void-Bootstrapper/0.1.0")
+        .user_agent(concat!("Void-Bootstrapper/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|_| BootstrapError::Network("HTTP client initialization failed".into()))
 }
@@ -514,7 +514,7 @@ pub async fn install_release(
             0,
             selected.client.size,
             3,
-            "Downloading the signed checksum...",
+            "Downloading the release checksum...",
         );
         let checksum_response =
             checked_response(&http_client, &selected.checksum.browser_download_url).await?;
@@ -670,8 +670,8 @@ mod tests {
     fn refuses_malformed_checksum_documents() {
         assert!(parse_checksum(b"").is_err());
         assert!(parse_checksum(b"not-a-hash").is_err());
-        assert!(parse_checksum(&vec![b'a'; 65]).is_err());
-        assert!(parse_checksum(&vec![b'z'; 64]).is_err());
+        assert!(parse_checksum(&[b'a'; 65]).is_err());
+        assert!(parse_checksum(&[b'z'; 64]).is_err());
     }
 
     #[test]

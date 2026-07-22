@@ -1,16 +1,17 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::auth::MinecraftSession;
 use crate::error::LauncherError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AuthPersistence {
     OneWeek,
     TwoWeeks,
+    #[default]
     OneMonth,
     AlwaysAsk,
 }
@@ -23,12 +24,6 @@ impl AuthPersistence {
             Self::OneMonth => Some(30 * 86_400),
             Self::AlwaysAsk => None,
         }
-    }
-}
-
-impl Default for AuthPersistence {
-    fn default() -> Self {
-        Self::OneMonth
     }
 }
 
@@ -62,9 +57,16 @@ pub struct AppState {
     /// The signed-in account. `RwLock` because commands run concurrently;
     /// `None` until `complete_microsoft_login` succeeds.
     pub session: RwLock<Option<MinecraftSession>>,
+    /// Serializes vault mutations and Microsoft refresh/login finalization.
+    /// Without this lock, two concurrent commands could rotate the same
+    /// refresh token and overwrite each other's encrypted vault update.
+    pub auth_operation: Mutex<()>,
     /// A persistent IPC connection is required; Discord clears presence when
     /// the client disconnects, so this cannot be a short-lived local variable.
     pub discord_rpc: std::sync::Mutex<Option<crate::discord_rpc::DiscordIpc>>,
+    /// PID of the most recently launched Minecraft process, if it is still
+    /// known to the native launcher.
+    pub minecraft_pid: std::sync::Mutex<Option<u32>>,
 }
 
 impl AppState {
@@ -77,6 +79,12 @@ impl AppState {
                 env!("CARGO_PKG_VERSION"),
                 " (github.com/weeeedddd/void-launcher)"
             ))
+            // A stalled DNS/TLS handshake or a server that stops sending data
+            // must not leave a Tauri command pending forever. `read_timeout`
+            // is renewed for every received chunk, so legitimate large
+            // modpack and runtime downloads can still take as long as needed.
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .read_timeout(std::time::Duration::from_secs(90))
             .build()
             .expect("failed to build the HTTP client");
 
@@ -84,8 +92,20 @@ impl AppState {
             http,
             data_dir,
             session: RwLock::new(None),
+            auth_operation: Mutex::new(()),
             discord_rpc: std::sync::Mutex::new(None),
+            minecraft_pid: std::sync::Mutex::new(None),
         }
+    }
+
+    pub fn set_minecraft_pid(&self, pid: Option<u32>) {
+        if let Ok(mut current) = self.minecraft_pid.lock() {
+            *current = pid;
+        }
+    }
+
+    pub fn minecraft_pid(&self) -> Option<u32> {
+        self.minecraft_pid.lock().ok().and_then(|current| *current)
     }
 
     pub fn instances_dir(&self) -> PathBuf {
@@ -125,7 +145,6 @@ impl AppState {
     fn curseforge_secret_path(&self) -> PathBuf {
         self.data_dir.join("secrets").join("curseforge-core.key")
     }
-
 }
 
 #[tauri::command]
@@ -182,6 +201,7 @@ pub async fn set_auth_persistence(
     state: tauri::State<'_, AppState>,
     persistence: AuthPersistence,
 ) -> Result<SettingsStatus, LauncherError> {
+    let _operation = state.auth_operation.lock().await;
     let mut settings = state.settings();
     settings.auth_persistence = persistence;
     std::fs::create_dir_all(&state.data_dir)?;
@@ -190,20 +210,32 @@ pub async fn set_auth_persistence(
         serde_json::to_string_pretty(&settings)?,
     )?;
 
-    if persistence == AuthPersistence::AlwaysAsk {
-        crate::auth::session_store::remove(&state.data_dir)?;
-    } else if let Some(refresh_token) = state
-        .session
-        .read()
-        .await
-        .as_ref()
-        .and_then(|session| session.msa_refresh_token.as_deref())
-    {
-        crate::auth::session_store::save(
-            &state.data_dir,
+    let persisted = crate::auth::session_store::load(&state.data_dir, persistence)?;
+    let live_session = state.session.read().await.clone();
+    if let Some(session) = live_session {
+        let now = chrono::Utc::now().timestamp();
+        let credential_is_eligible = persistence
+            .maximum_age_seconds()
+            .is_some_and(|maximum_age| {
+                session.authenticated_at > 0
+                    && session.authenticated_at <= now.saturating_add(300)
+                    && now.saturating_sub(session.authenticated_at) <= maximum_age
+            });
+        let refresh_token = credential_is_eligible
+            .then(|| session.msa_refresh_token.clone())
+            .flatten();
+        let mut vault = match persisted {
+            Some(crate::auth::session_store::StoredMicrosoftState::Vault(vault)) => vault,
+            _ => crate::auth::session_store::StoredMicrosoftVault::default(),
+        };
+        crate::auth::session_store::upsert_account(
+            &mut vault,
+            session.profile,
             refresh_token,
-            chrono::Utc::now().timestamp(),
+            session.authenticated_at,
+            now,
         )?;
+        crate::auth::session_store::save_vault(&state.data_dir, &vault)?;
     }
 
     Ok(SettingsStatus {

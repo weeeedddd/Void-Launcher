@@ -7,10 +7,10 @@ pub mod microsoft;
 pub mod session_store;
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The public part of a signed-in account — safe to hand to the WebView.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MinecraftProfile {
     /// Player UUID (undashed, as returned by the profile endpoint).
@@ -33,6 +33,10 @@ pub struct MinecraftSession {
     /// Bearer token used when launching the game (valid ~24 h).
     pub access_token: String,
     pub expires_at: DateTime<Utc>,
+    /// Original interactive authorization time. Silent refreshes preserve
+    /// this value so the configured re-login interval cannot be extended
+    /// indefinitely just by switching accounts.
+    pub authenticated_at: i64,
     /// Lets us silently re-run the chain when the access token expires.
     pub msa_refresh_token: Option<String>,
 }

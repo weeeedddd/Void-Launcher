@@ -61,13 +61,13 @@ const commonStroke = {
   vectorEffect: "non-scaling-stroke",
 } as const;
 
-function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: string }): ReactNode {
+function GlyphPaths({ name }: { name: ShadowGlyphName }): ReactNode {
   switch (name) {
     case "dashboard":
       return (
         <>
           <path {...commonStroke} d="M3 4.5 10.4 2l-1.2 8.1L3 11.4Zm10.1-1.8L21 5.1l-2.4 6.2-6.8-1.2ZM3.5 14l5.8-1.3 1.1 8.6L3 18.8Zm8.9-1.1 7.2 1.2 1.2 5.2-7.3 2.2Z" />
-          <path fill={`url(#${gradientId})`} d="m7.8 5.2-3.1 1 .1 3.1 3.6-.7Zm6.6-.5-.7 3.7 4.1.7 1-2.9ZM5.1 15.4l.1 2.2 3 1 .1-3.8Zm8.9-.3.5 4 4-1.1-.3-2.3Z" opacity=".33" />
+          <path fill="currentColor" d="m7.8 5.2-3.1 1 .1 3.1 3.6-.7Zm6.6-.5-.7 3.7 4.1.7 1-2.9ZM5.1 15.4l.1 2.2 3 1 .1-3.8Zm8.9-.3.5 4 4-1.1-.3-2.3Z" opacity=".2" />
         </>
       );
     case "vault":
@@ -75,7 +75,7 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
         <>
           <path {...commonStroke} d="M3.2 5.1 12 2.2l8.8 2.9-.9 14.1-7.9 2.6-7.9-2.6Zm4 2.2h9.6l.7 9.1-5.5 2-5.5-2Zm4.8.3v10.6m-5.1-5.4h10.2" />
           <path {...commonStroke} d="m9.6 10.4 2.4-1.5 2.4 1.5-.3 4-2.1 1.2-2.1-1.2Z" />
-          <path fill={`url(#${gradientId})`} d="m5.2 6.4 6.8-2.1 6.8 2.1-.7 11.3-6.1 2-6.1-2Zm3.3 2.4-.5 6.6 4 1.4 4-1.4-.5-6.6Z" opacity=".22" />
+          <path fill="currentColor" d="m5.2 6.4 6.8-2.1 6.8 2.1-.7 11.3-6.1 2-6.1-2Zm3.3 2.4-.5 6.6 4 1.4 4-1.4-.5-6.6Z" opacity=".18" />
         </>
       );
     case "mods":
@@ -84,7 +84,7 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return (
         <>
           <path {...commonStroke} d="M2.5 18.8h19M4 16.1l3.1-5.4 3 2.5 3.5-8 2.6 7.1 4-3.7" />
-          <path fill={`url(#${gradientId})`} d="m4 16.1 3.1-5.4 3 2.5 3.5-8 2.6 7.1 4-3.7v8.5H4Z" opacity=".2" />
+          <path fill="currentColor" d="m4 16.1 3.1-5.4 3 2.5 3.5-8 2.6 7.1 4-3.7v8.5H4Z" opacity=".16" />
           <path {...commonStroke} d="m18.4 7.9 2-.1-.2 2" />
         </>
       );
@@ -94,14 +94,14 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return (
         <>
           <path {...commonStroke} d="M5 3.2h13.8L18 20.8H4.2L5 3.2Zm3.1 3.5h7.8M7.7 10h8.9m-9.1 3.4h6.4m-6.6 3.4h8.2" />
-          <path fill={`url(#${gradientId})`} d="m17.1 4.9-.7 14.2 2.1-.1.4-14.1Z" opacity=".4" />
+          <path fill="currentColor" d="m17.1 4.9-.7 14.2 2.1-.1.4-14.1Z" opacity=".25" />
         </>
       );
     case "play":
       return (
         <>
           <path {...commonStroke} d="M5 2.8 20.8 12 5 21.2l1.3-7-3.1-2.3 3.3-2.1Z" />
-          <path fill={`url(#${gradientId})`} d="m8 7.2 8.5 4.9-8.9 5.1 1-4.2-2-1.2 2.1-1.3Z" opacity=".52" />
+          <path fill="currentColor" d="m8 7.2 8.5 4.9-8.9 5.1 1-4.2-2-1.2 2.1-1.3Z" opacity=".3" />
         </>
       );
     case "close":
@@ -118,14 +118,14 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return (
         <>
           <path {...commonStroke} d="m12 2.4 4.4 2.8-.9 5.3-3.8 2.4-4.1-2.6-.7-5Zm-8.7 19 .8-5 5.2-3.1 2.6 1.9 2.8-1.9 5.2 3.2.8 4.9Z" />
-          <path fill={`url(#${gradientId})`} d="m9 6.1 3-1.5 2.2 1.7-.5 3.1-2.1 1.2-2.4-1.4ZM6.2 17.5l3.4-2 2.3 2 2.6-2 3.4 2 .3 2.1H5.8Z" opacity=".32" />
+          <path fill="currentColor" d="m9 6.1 3-1.5 2.2 1.7-.5 3.1-2.1 1.2-2.4-1.4ZM6.2 17.5l3.4-2 2.3 2 2.6-2 3.4 2 .3 2.1H5.8Z" opacity=".2" />
         </>
       );
     case "check":
       return (
         <>
           <path {...commonStroke} d="m2.9 12.6 5.4 6.1L21.2 4.9l-2.4 8.7-10 8-4.4-4.2Z" />
-          <path fill={`url(#${gradientId})`} d="m6.3 13 2.3 2.7 8.8-8.6-1.3 4.7-7.3 6.5-3.4-3.1Z" opacity=".4" />
+          <path fill="currentColor" d="m6.3 13 2.3 2.7 8.8-8.6-1.3 4.7-7.3 6.5-3.4-3.1Z" opacity=".25" />
         </>
       );
     case "sliders":
@@ -135,7 +135,7 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
         <>
           <path {...commonStroke} d="m12 2.2 8 3-1.1 9.2-3 4.5-4 2.9L8 18.9l-3-4.5-1-9.2Z" />
           <path {...commonStroke} d="m8 11.5 2.6 2.7 5.7-6.1" />
-          <path fill={`url(#${gradientId})`} d="m12 4.2 5.7 2.1-.8 7.3-2.3 3.5-2.7 2-2.7-2-2.1-3.5-.8-7.3Z" opacity=".18" />
+          <path fill="currentColor" d="m12 4.2 5.7 2.1-.8 7.3-2.3 3.5-2.7 2-2.7-2-2.1-3.5-.8-7.3Z" opacity=".14" />
         </>
       );
     case "server":
@@ -153,7 +153,7 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return (
         <>
           <path {...commonStroke} d="m12 1.8 1.8 7.1 7.4 2.4-7 2.4-2.2 8.5-2.2-8.5-7-2.4 7.4-2.4Z" />
-          <path fill={`url(#${gradientId})`} d="m12 5.5.9 4.4 4.5 1.4-4.2 1.4-1.2 5.2-1.2-5.2-4.2-1.4 4.5-1.4Z" opacity=".5" />
+          <path fill="currentColor" d="m12 5.5.9 4.4 4.5 1.4-4.2 1.4-1.2 5.2-1.2-5.2-4.2-1.4 4.5-1.4Z" opacity=".28" />
         </>
       );
     case "music":
@@ -178,7 +178,7 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return (
         <>
           <path {...commonStroke} d="m12 2.1 9.2 17.3-9.5 2.4-8.9-3.1ZM12 8v6.1m0 3v.1" />
-          <path fill={`url(#${gradientId})`} d="m12 5.6 6.3 12.1-6.5 1.5-6-1.8Z" opacity=".2" />
+          <path fill="currentColor" d="m12 5.6 6.3 12.1-6.5 1.5-6-1.8Z" opacity=".15" />
         </>
       );
     case "notification":
@@ -206,14 +206,14 @@ function GlyphPaths({ name, gradientId }: { name: ShadowGlyphName; gradientId: s
       return (
         <>
           <path {...commonStroke} d="M3.2 16.4h17.6l-3.2 3H6.4Z" />
-          <path fill={`url(#${gradientId})`} d="M6.5 17.1h11l-1 .9h-9Z" opacity=".48" />
+          <path fill="currentColor" d="M6.5 17.1h11l-1 .9h-9Z" opacity=".28" />
         </>
       );
     case "maximize":
       return (
         <>
           <path {...commonStroke} d="m4 4.2 8-1.1 8 1.1-.8 7.8.8 7.8-8 1.1-8-1.1.8-7.8Zm3.2 3.1h9.6l-.5 4.7.5 4.7H7.2l.5-4.7Z" />
-          <path fill={`url(#${gradientId})`} d="m6 5.7 6-.8 6 .8-.2 1.7H6.2Z" opacity=".44" />
+          <path fill="currentColor" d="m6 5.7 6-.8 6 .8-.2 1.7H6.2Z" opacity=".25" />
         </>
       );
   }
@@ -229,8 +229,6 @@ export function ShadowGlyph({
   const reactId = useId();
   const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
   const titleId = `shadow-glyph-title-${safeId}`;
-  const glowId = `shadow-glyph-glow-${safeId}`;
-  const gradientId = `shadow-glyph-gradient-${safeId}`;
 
   return (
     <svg
@@ -246,28 +244,7 @@ export function ShadowGlyph({
       xmlns="http://www.w3.org/2000/svg"
     >
       {title ? <title id={titleId}>{title}</title> : null}
-      <defs>
-        <linearGradient id={gradientId} x1="3" x2="21" y1="3" y2="21" gradientUnits="userSpaceOnUse">
-          <stop stopColor="currentColor" stopOpacity=".95" />
-          <stop offset=".55" stopColor="currentColor" stopOpacity=".45" />
-          <stop offset="1" stopColor="currentColor" stopOpacity=".08" />
-        </linearGradient>
-        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%" colorInterpolationFilters="sRGB">
-          <feGaussianBlur in="SourceGraphic" stdDeviation=".55" result="blur" />
-          <feColorMatrix
-            in="blur"
-            result="coloredBlur"
-            values="0.45 0 0 0 0.24  0 0.12 0 0 0  0 0 0.9 0 0.45  0 0 0 0.85 0"
-          />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-      <g filter={`url(#${glowId})`}>
-        <GlyphPaths gradientId={gradientId} name={name} />
-      </g>
+      <GlyphPaths name={name} />
     </svg>
   );
 }

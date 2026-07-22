@@ -4,9 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { VoidClientApp } from "./VoidClientApp";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import "@fontsource-variable/space-grotesk";
-import "@fontsource/orbitron/600.css";
-import "@fontsource/orbitron/700.css";
-import "@fontsource/orbitron/900.css";
+import "@fontsource-variable/jetbrains-mono";
 import "./styles/theme.css";
 
 // One QueryClient for the whole app — caches mod searches, instance lists, …

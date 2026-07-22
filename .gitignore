@@ -6,6 +6,11 @@ dist/
 
 # Rust build output
 src-tauri/target/
+bootstrapper/src-tauri/target/
+/target-client/
+/target-bootstrapper/
+/target-*-audit/
+/release/
 
 # Tauri generated schemas
 src-tauri/gen/

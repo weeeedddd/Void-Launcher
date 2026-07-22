@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use lyceris::auth::AuthMethod;
 use lyceris::minecraft::config::{Config, ConfigBuilder, Memory, Profile};
+use lyceris::minecraft::emitter::{Emitter as GameEmitter, Event};
 use lyceris::minecraft::install::install;
-use lyceris::minecraft::launch::launch;
 use lyceris::minecraft::loader::{
     fabric::Fabric, forge::Forge, neoforge::NeoForge, quilt::Quilt, Loader,
 };
@@ -15,17 +15,43 @@ use crate::error::LauncherError;
 use crate::instance::{Instance, InstanceLoader};
 use crate::state::AppState;
 
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchOptions {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub fullscreen: bool,
+}
+
+impl LaunchOptions {
+    fn game_arguments(self) -> Vec<String> {
+        let mut arguments = Vec::with_capacity(5);
+        if let (Some(width), Some(height)) = (self.width, self.height) {
+            arguments.extend([
+                "--width".to_owned(),
+                width.clamp(800, 7_680).to_string(),
+                "--height".to_owned(),
+                height.clamp(600, 4_320).to_string(),
+            ]);
+        }
+        if self.fullscreen {
+            arguments.push("--fullscreen".to_owned());
+        }
+        arguments
+    }
+}
+
 /// Installs and starts one authenticated Minecraft instance.
 ///
-/// Offline/developer profiles continue to use `developer_test_mode`, which is
-/// intentionally a UI-only simulation. A real launch always requires the
-/// Microsoft -> Xbox -> Minecraft ownership flow stored in native AppState.
+/// A real launch always requires the Microsoft -> Xbox -> Minecraft ownership
+/// flow stored in native AppState. There is no preview/developer branch.
 #[tauri::command]
 pub async fn launch_instance(
     app: AppHandle,
     state: State<'_, AppState>,
     instance_id: Uuid,
-    developer_test_mode: bool,
+    options: Option<LaunchOptions>,
 ) -> Result<(), LauncherError> {
     emit_launch_log(
         &app,
@@ -34,7 +60,7 @@ pub async fn launch_instance(
         "queued",
         "Launch request accepted by the native service.",
     );
-    let result = launch_instance_inner(&app, state.inner(), instance_id, developer_test_mode).await;
+    let result = launch_instance_inner(&app, state.inner(), instance_id, options).await;
     if let Err(error) = &result {
         emit_launch_log(&app, instance_id, "error", "failed", &error.to_string());
     }
@@ -45,22 +71,10 @@ async fn launch_instance_inner(
     app: &AppHandle,
     state: &AppState,
     instance_id: Uuid,
-    developer_test_mode: bool,
+    options: Option<LaunchOptions>,
 ) -> Result<(), LauncherError> {
     let instances_root = state.instances_dir();
     let mut instance = Instance::find(&instances_root, instance_id)?;
-
-    if developer_test_mode {
-        tokio::time::sleep(std::time::Duration::from_millis(1_250)).await;
-        emit_launch_log(
-            app,
-            instance_id,
-            "success",
-            "preview",
-            "Preview launch completed.",
-        );
-        return Ok(());
-    }
 
     emit_launch_log(
         app,
@@ -69,14 +83,11 @@ async fn launch_instance_inner(
         "authentication",
         "Verifying the Microsoft Minecraft session.",
     );
-    let session = state.session.read().await.clone().ok_or_else(|| {
-        LauncherError::Auth("Sign in with Microsoft before launching Minecraft.".into())
-    })?;
-    if session.is_expired() {
-        return Err(LauncherError::Auth(
-            "Your Minecraft session expired. Sign in with Microsoft again.".into(),
-        ));
-    }
+    let session = crate::auth::commands::ensure_fresh_microsoft_session(state)
+        .await?
+        .ok_or_else(|| {
+            LauncherError::Auth("Sign in with Microsoft before launching Minecraft.".into())
+        })?;
     emit_launch_log(
         app,
         instance_id,
@@ -104,7 +115,27 @@ async fn launch_instance_inner(
         .profile(profile)
         .runtime_dir(runtime_root)
         .custom_java_args(instance.extra_java_args.clone())
+        .custom_args(options.unwrap_or_default().game_arguments())
         .client(state.http.clone());
+
+    let managed_java = match instance.java_path.as_deref().map(PathBuf::from) {
+        Some(path) if path.is_file() => Some(path),
+        Some(path) => {
+            emit_launch_log(
+                app,
+                instance_id,
+                "warning",
+                "runtime",
+                &format!(
+                    "The configured Java runtime is missing ({}); falling back to the verified Mojang runtime.",
+                    path.display()
+                ),
+            );
+            instance.java_path = None;
+            None
+        }
+        None => None,
+    };
 
     emit_launch_log(
         app,
@@ -117,8 +148,10 @@ async fn launch_instance_inner(
         ),
     );
 
-    match instance.loader {
-        InstanceLoader::Vanilla => install_and_launch(app, instance_id, builder.build()).await?,
+    let process_id = match instance.loader {
+        InstanceLoader::Vanilla => {
+            install_and_launch(app, instance_id, builder.build(), managed_java.as_deref()).await?
+        }
         InstanceLoader::Fabric => {
             emit_launch_log(
                 app,
@@ -132,8 +165,9 @@ async fn launch_instance_inner(
                 app,
                 instance_id,
                 builder.loader(Fabric(version).into()).build(),
+                managed_java.as_deref(),
             )
-            .await?;
+            .await?
         }
         InstanceLoader::Forge => {
             emit_launch_log(
@@ -148,8 +182,9 @@ async fn launch_instance_inner(
                 app,
                 instance_id,
                 builder.loader(Forge(version).into()).build(),
+                managed_java.as_deref(),
             )
-            .await?;
+            .await?
         }
         InstanceLoader::Neoforge => {
             emit_launch_log(
@@ -164,8 +199,9 @@ async fn launch_instance_inner(
                 app,
                 instance_id,
                 builder.loader(NeoForge(version).into()).build(),
+                managed_java.as_deref(),
             )
-            .await?;
+            .await?
         }
         InstanceLoader::Quilt => {
             emit_launch_log(
@@ -180,10 +216,12 @@ async fn launch_instance_inner(
                 app,
                 instance_id,
                 builder.loader(Quilt(version).into()).build(),
+                managed_java.as_deref(),
             )
-            .await?;
+            .await?
         }
-    }
+    };
+    state.set_minecraft_pid(Some(process_id));
 
     instance.last_played_at = Some(chrono::Utc::now());
     instance.save(&instances_root)?;
@@ -201,7 +239,22 @@ async fn install_and_launch<T: Loader>(
     app: &AppHandle,
     instance_id: Uuid,
     config: Config<T>,
-) -> Result<(), LauncherError> {
+    managed_java: Option<&std::path::Path>,
+) -> Result<u32, LauncherError> {
+    // The launch adapter exposes the game's stdout and stderr through the
+    // Lyceris emitter. Keep one
+    // listener alive for the whole install/launch operation so Mission
+    // Control receives actual Minecraft output instead of only launcher
+    // phase messages.  `launch` clones the emitter into its stdout reader,
+    // therefore the listener also remains active after this function returns.
+    let emitter = GameEmitter::default();
+    let log_app = app.clone();
+    emitter
+        .on(Event::Console, move |line: String| {
+            emit_game_console_line(&log_app, instance_id, line);
+        })
+        .await;
+
     emit_launch_log(
         app,
         instance_id,
@@ -209,7 +262,7 @@ async fn install_and_launch<T: Loader>(
         "install",
         "Downloading and verifying required game files.",
     );
-    install(&config, None).await.map_err(|error| {
+    install(&config, Some(&emitter)).await.map_err(|error| {
         LauncherError::Internal(format!("Minecraft installation failed: {error}"))
     })?;
     emit_launch_log(
@@ -220,8 +273,8 @@ async fn install_and_launch<T: Loader>(
         "Game files and libraries verified.",
     );
 
-    // On Windows Lyceris resolves javaw.exe, so no console window is opened.
-    // Dropping tokio::process::Child does not terminate the spawned game.
+    // On Windows the launch adapter prefers javaw.exe, so no console window
+    // is opened. Dropping tokio::process::Child does not terminate the game.
     emit_launch_log(
         app,
         instance_id,
@@ -229,11 +282,12 @@ async fn install_and_launch<T: Loader>(
         "process",
         "Starting the windowless Java game process.",
     );
-    let child = launch(&config, None)
-        .await
-        .map_err(|error| LauncherError::Internal(format!("Minecraft launch failed: {error}")))?;
+    let child = super::managed_launch::launch(&config, Some(&emitter), managed_java).await?;
+    let process_id = child.id().ok_or_else(|| {
+        LauncherError::Internal("Minecraft process did not expose a process id.".into())
+    })?;
     drop(child);
-    Ok(())
+    Ok(process_id)
 }
 
 #[derive(Clone, Serialize)]
@@ -257,6 +311,14 @@ fn emit_launch_log(app: &AppHandle, instance_id: Uuid, level: &str, phase: &str,
             instance_id: instance_id.to_string(),
         },
     );
+}
+
+fn emit_game_console_line(app: &AppHandle, instance_id: Uuid, line: String) {
+    let message = line.trim_end_matches(['\r', '\n']);
+    if message.trim().is_empty() {
+        return;
+    }
+    emit_launch_log(app, instance_id, "info", "game", message);
 }
 
 async fn resolve_loader_version(
@@ -403,4 +465,35 @@ async fn resolve_neoforge(
                 "No NeoForge loader supports Minecraft {game_version}."
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LaunchOptions;
+
+    #[test]
+    fn launch_options_emit_bounded_minecraft_arguments() {
+        let arguments = LaunchOptions {
+            width: Some(100),
+            height: Some(10_000),
+            fullscreen: true,
+        }
+        .game_arguments();
+
+        assert_eq!(
+            arguments,
+            ["--width", "800", "--height", "4320", "--fullscreen"]
+        );
+    }
+
+    #[test]
+    fn launch_options_do_not_emit_partial_resolution() {
+        assert!(LaunchOptions {
+            width: Some(1_920),
+            height: None,
+            fullscreen: false,
+        }
+        .game_arguments()
+        .is_empty());
+    }
 }

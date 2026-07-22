@@ -324,9 +324,9 @@ async fn wait_for_callback(
 
     let success = result.is_ok();
     let body = if success {
-        "<!doctype html><meta charset=utf-8><title>Void Launcher</title><style>body{background:#050505;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh;margin:0}div{padding:32px;border:1px solid #7b2cbf;border-radius:18px;background:#110d17}</style><div>Authorization received. Void Launcher is completing the secure connection.</div>"
+        "<!doctype html><meta charset=utf-8><title>Void Launcher</title><style>body{background:#111;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh;margin:0}div{padding:32px;border:1px solid #7b2cbf;border-radius:2px;background:#1a1a1a}</style><div>Authorization received. Void Launcher is completing the secure connection.</div>"
     } else {
-        "<!doctype html><meta charset=utf-8><title>Void Launcher</title><style>body{background:#050505;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh;margin:0}div{padding:32px;border:1px solid #ef4444;border-radius:18px;background:#110d17}</style><div>Authorization failed. Return to Void Launcher and try again.</div>"
+        "<!doctype html><meta charset=utf-8><title>Void Launcher</title><style>body{background:#111;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh;margin:0}div{padding:32px;border:1px solid #333;border-radius:2px;background:#1a1a1a}</style><div>Authorization failed. Return to Void Launcher and try again.</div>"
     };
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",

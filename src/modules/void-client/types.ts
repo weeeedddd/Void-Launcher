@@ -1,4 +1,4 @@
-export type VoidView = "dashboard" | "deployments" | "mods" | "telemetry" | "settings" | "chronicle" | "systems";
+export type VoidView = "dashboard" | "deployments" | "mods" | "telemetry" | "settings" | "chronicle";
 
 export type ClientLanguageCode = "en" | "de" | "ru" | "ja" | "ko";
 
@@ -21,9 +21,7 @@ export type SettingsSection = "general" | "launch" | "mission" | "rpc" | "privac
 
 export type LauncherVisibility = "keep-open" | "hide" | "close";
 
-export type MissionVisibility = "best-monitor" | "background" | "hidden";
-
-export type LogRetention = "forever" | "one-year" | "six-months" | "thirty-days" | "seven-days";
+export type MissionVisibility = "auto-open" | "manual" | "hidden";
 
 export type NotificationPosition = "top-left" | "top-center" | "top-right" | "bottom-left" | "bottom-center" | "bottom-right";
 
@@ -43,47 +41,13 @@ export type NotificationKind =
 
 export type RpcLanguage = "english" | "german" | "russian" | "japanese" | "korean" | "spanish" | "chinese" | "polish";
 
-export type CrashLogDestination = "mc-logs" | "void-native";
-
-export type CatalogSource = "modrinth" | "curseforge";
-
 export type CatalogKind = "modpack" | "mod" | "shader";
 
-export type CatalogLoader = "Forge" | "Fabric" | "NeoForge" | "Iris" | "Quilt";
-
 export type InstallPhase = "idle" | "installing" | "installed";
-
-export interface ITelemetrySnapshot {
-  cpu: number;
-  ram: number;
-  ping: number;
-  fps: number;
-  launchLoadActive: boolean;
-  cpuHistory: number[];
-  ramHistory: number[];
-}
 
 export interface IInstallState {
   phase: InstallPhase;
   progress: number;
-}
-
-export interface IModCatalogItem {
-  id: string;
-  name: string;
-  creator: string;
-  description: string;
-  version: string;
-  gameVersion: string;
-  source: CatalogSource;
-  kind: CatalogKind;
-  category: string;
-  loader: CatalogLoader;
-  imageUrl: string;
-  updatedAt: string;
-  downloadCount: number;
-  accent: "violet" | "blue" | "crimson" | "amber";
-  downloads: string;
 }
 
 export interface INewsEntry {
@@ -95,11 +59,4 @@ export interface INewsEntry {
   readTime: string;
   chapter: string;
   body: string[];
-}
-
-export interface IFriendEntry {
-  id: string;
-  username: string;
-  status: string;
-  online: boolean;
 }

@@ -9,3 +9,4 @@ pub mod commands;
 pub mod hardware;
 pub mod java;
 pub mod optimizer;
+pub mod process;

@@ -1,7 +1,7 @@
 {
   "name": "void-launcher-bootstrapper",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "description": "Standalone native bootstrapper frontend for Void Launcher.",
   "scripts": {

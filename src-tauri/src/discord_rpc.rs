@@ -22,7 +22,7 @@ pub const VOID_DISCORD_APPLICATION_ID: &str = "1456456347397652512";
 pub struct DiscordIpc {
     stream: File,
     pub client_id: String,
-    started_at_ms: u128,
+    started_at_seconds: u64,
 }
 
 impl DiscordIpc {
@@ -30,7 +30,10 @@ impl DiscordIpc {
         #[cfg(windows)]
         {
             for index in 0..10 {
-                let path = format!(r"\\?\pipe\discord-ipc-{index}");
+                // Discord exposes ordinary Win32 named pipes. `\\?\pipe` is
+                // an extended filesystem path and does not address that pipe
+                // namespace; using it made every connection look unavailable.
+                let path = format!(r"\\.\pipe\discord-ipc-{index}");
                 if let Ok(stream) = OpenOptions::new().read(true).write(true).open(path) {
                     return Ok(stream);
                 }
@@ -59,13 +62,13 @@ impl DiscordIpc {
         let mut client = Self {
             stream: Self::open_pipe().map_err(|error| error.to_string())?,
             client_id: client_id.clone(),
-            started_at_ms: SystemTime::now()
+            started_at_seconds: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_millis(),
+                .as_secs(),
         };
         client.send(0, json!({ "v": 1, "client_id": client_id }))?;
-        let _ = client.receive()?;
+        Self::ensure_success(client.receive()?)?;
         Ok(client)
     }
 
@@ -107,30 +110,40 @@ impl DiscordIpc {
             .to_string()
     }
 
+    fn ensure_success(response: Value) -> Result<Value, String> {
+        if response.get("evt").and_then(Value::as_str) == Some("ERROR") {
+            let message = response
+                .pointer("/data/message")
+                .and_then(Value::as_str)
+                .unwrap_or("Discord rejected the Rich Presence request");
+            return Err(message.to_owned());
+        }
+        Ok(response)
+    }
+
     pub fn set_activity(&mut self, details: String, state: String) -> Result<(), String> {
-        self.send(1, json!({
-            "cmd": "SET_ACTIVITY",
-            "args": {
-                "pid": std::process::id(),
-                "activity": {
-                    "details": details,
-                    "state": state,
-                    "timestamps": { "start": self.started_at_ms },
-                    "assets": {
-                        "large_image": "void_logo",
-                        "large_text": "Void Launcher"
+        self.send(
+            1,
+            json!({
+                "cmd": "SET_ACTIVITY",
+                "args": {
+                    "pid": std::process::id(),
+                    "activity": {
+                        "details": details,
+                        "state": state,
+                        "timestamps": { "start": self.started_at_seconds }
                     }
-                }
-            },
-            "nonce": Self::nonce()
-        }))?;
-        let _ = self.receive()?;
+                },
+                "nonce": Self::nonce()
+            }),
+        )?;
+        Self::ensure_success(self.receive()?)?;
         Ok(())
     }
 
     pub fn clear_activity(&mut self) -> Result<(), String> {
         self.send(1, json!({ "cmd": "SET_ACTIVITY", "args": { "pid": std::process::id(), "activity": Value::Null }, "nonce": Self::nonce() }))?;
-        let _ = self.receive()?;
+        Self::ensure_success(self.receive()?)?;
         Ok(())
     }
 }
@@ -155,6 +168,19 @@ pub struct DiscordRpcStatus {
     pub connected: bool,
     pub application_id: Option<String>,
     pub message: String,
+}
+
+fn localized_activity(language: &str) -> (&'static str, &'static str) {
+    match language {
+        "german" => ("Spielt Void Launcher", "Im Launcher"),
+        "russian" => ("Играет в Void Launcher", "В лаунчере"),
+        "japanese" => ("Void Launcherをプレイ中", "ランチャー内"),
+        "korean" => ("Void Launcher 플레이 중", "런처에 있음"),
+        "spanish" => ("Jugando a Void Launcher", "En el launcher"),
+        "chinese" => ("正在使用 Void Launcher", "在启动器中"),
+        "polish" => ("Gra w Void Launcher", "W launcherze"),
+        _ => ("Playing Void Launcher", "In the launcher"),
+    }
 }
 
 fn status(state: &AppState, message: String) -> DiscordRpcStatus {
@@ -198,49 +224,100 @@ pub fn update_discord_rpc(
         .discord_rpc
         .lock()
         .map_err(|_| LauncherError::Internal("Discord RPC lock was poisoned".into()))?;
-    if !request.enabled || request.hide_when_idle {
-        if let Some(client) = guard.as_mut() {
-            client.clear_activity().map_err(LauncherError::Internal)?;
-        }
+    if !request.enabled {
+        let clear_result = guard.as_mut().map(DiscordIpc::clear_activity);
         *guard = None;
         drop(guard);
+        if let Some(Err(error)) = clear_result {
+            return Err(LauncherError::Internal(format!(
+                "Discord presence could not be cleared: {error}"
+            )));
+        }
         return Ok(status(&state, "Discord presence cleared.".into()));
     }
+    // Idle detection lives in the window runtime, which sends `enabled=false`
+    // when its timer expires. The flag remains part of the command contract so
+    // the desired preference is explicit without inventing a native idle state.
+    let _hide_when_idle_requested = request.hide_when_idle;
     let needs_new_client = guard
         .as_ref()
         .map(|client| client.client_id != application_id)
         .unwrap_or(true);
     if needs_new_client {
-        *guard = Some(DiscordIpc::connect(application_id).map_err(LauncherError::Internal)?);
+        let client = DiscordIpc::connect(application_id).map_err(|error| {
+            LauncherError::Internal(format!("Discord desktop connection failed: {error}"))
+        })?;
+        *guard = Some(client);
     }
-    let details = request
-        .details
-        .unwrap_or_else(|| "Step Beyond the Ordinary Client".into());
-    let state_text = request.state.unwrap_or_else(|| {
-        match request.language.as_str() {
-            "german" => "Im Void Launcher",
-            "russian" => "В Void Launcher",
-            "japanese" => "Void Launcher を起動中",
-            _ => "In the Void Launcher",
-        }
-        .into()
-    });
-    guard
+    let (default_details, default_state) = localized_activity(&request.language);
+    let details = request.details.unwrap_or_else(|| default_details.into());
+    let state_text = request.state.unwrap_or_else(|| default_state.into());
+    let activity_result = guard
         .as_mut()
         .expect("Discord IPC initialized")
-        .set_activity(details, state_text)
-        .map_err(LauncherError::Internal)?;
+        .set_activity(details, state_text);
+    if let Err(error) = activity_result {
+        // A failed write/read means the pipe can no longer be trusted. Do not
+        // report a stale client as connected on the next status request.
+        *guard = None;
+        return Err(LauncherError::Internal(format!(
+            "Discord presence update failed: {error}"
+        )));
+    }
     drop(guard);
     Ok(status(&state, "Discord presence is live.".into()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::VOID_DISCORD_APPLICATION_ID;
+    use super::{localized_activity, DiscordIpc, VOID_DISCORD_APPLICATION_ID};
+    use serde_json::json;
 
     #[test]
     fn embeds_the_public_void_discord_application_id() {
         assert_eq!(VOID_DISCORD_APPLICATION_ID, "1456456347397652512");
-        assert!(VOID_DISCORD_APPLICATION_ID.bytes().all(|byte| byte.is_ascii_digit()));
+        assert!(VOID_DISCORD_APPLICATION_ID
+            .bytes()
+            .all(|byte| byte.is_ascii_digit()));
+    }
+
+    #[test]
+    fn rejects_discord_error_frames() {
+        let error = DiscordIpc::ensure_success(json!({
+            "evt": "ERROR",
+            "data": { "message": "invalid activity" }
+        }))
+        .unwrap_err();
+        assert_eq!(error, "invalid activity");
+    }
+
+    #[test]
+    fn accepts_discord_acknowledgements() {
+        assert!(DiscordIpc::ensure_success(json!({ "cmd": "SET_ACTIVITY" })).is_ok());
+    }
+
+    #[test]
+    fn localizes_every_supported_rpc_language() {
+        let translations = [
+            ("english", "Playing Void Launcher", "In the launcher"),
+            ("german", "Spielt Void Launcher", "Im Launcher"),
+            ("russian", "Играет в Void Launcher", "В лаунчере"),
+            ("japanese", "Void Launcherをプレイ中", "ランチャー内"),
+            ("korean", "Void Launcher 플레이 중", "런처에 있음"),
+            ("spanish", "Jugando a Void Launcher", "En el launcher"),
+            ("chinese", "正在使用 Void Launcher", "在启动器中"),
+            ("polish", "Gra w Void Launcher", "W launcherze"),
+        ];
+
+        for (language, expected_details, expected_state) in translations {
+            assert_eq!(
+                localized_activity(language),
+                (expected_details, expected_state)
+            );
+        }
+        assert_eq!(
+            localized_activity("unsupported"),
+            ("Playing Void Launcher", "In the launcher")
+        );
     }
 }

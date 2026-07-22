@@ -1,7 +1,7 @@
 {
   "name": "void-launcher-client",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "description": "The standalone daily-use Void Minecraft client. Installation is owned by the separate bootstrapper workspace.",
   "workspaces": [
@@ -26,6 +26,7 @@
     "release:bootstrapper": "npm --workspace void-launcher-bootstrapper run tauri -- build --no-bundle --ci"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/space-grotesk": "^5.2.10",
     "@fontsource/orbitron": "^5.2.8",
     "@radix-ui/react-dialog": "^1.1.19",

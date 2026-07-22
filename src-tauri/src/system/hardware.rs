@@ -6,10 +6,11 @@
 //! A heavier but driver-accurate alternative is enumerating adapters with
 //! the `wgpu` crate — overkill for a display string.
 
-use std::path::Path;
+use std::{path::Path, thread, time::Duration};
 
+use chrono::Utc;
 use serde::Serialize;
-use sysinfo::{Disks, System};
+use sysinfo::{Disks, ProcessesToUpdate, System};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,18 @@ pub struct HardwareReport {
     /// assets and Java runtimes are stored).
     pub disk_total_gb: f64,
     pub disk_available_gb: f64,
+}
+
+/// One real-time host sample. Per-process FPS is intentionally not included:
+/// it requires an in-game telemetry channel and must never be guessed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSystemMetrics {
+    pub cpu_usage_percent: f32,
+    pub memory_used_mb: u64,
+    pub memory_total_mb: u64,
+    pub process_count: usize,
+    pub sampled_at: String,
 }
 
 /// Takes a full snapshot of the machine.
@@ -73,6 +86,29 @@ pub fn scan(data_dir: &Path) -> HardwareReport {
         gpus: detect_gpus(),
         disk_total_gb: disk_total as f64 / 1e9,
         disk_available_gb: disk_available as f64 / 1e9,
+    }
+}
+
+/// Collect a bounded CPU delta and current memory/process counts. Commands
+/// call this through `spawn_blocking`, keeping Tokio and the WebView free.
+pub fn sample_live() -> LiveSystemMetrics {
+    let mut system = System::new();
+    system.refresh_cpu_all();
+    system.refresh_memory();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    thread::sleep(Duration::from_millis(120));
+    system.refresh_cpu_all();
+    system.refresh_memory();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    let memory_total_mb = system.total_memory() / (1024 * 1024);
+    let memory_available_mb = system.available_memory() / (1024 * 1024);
+    LiveSystemMetrics {
+        cpu_usage_percent: system.global_cpu_usage().clamp(0.0, 100.0),
+        memory_used_mb: memory_total_mb.saturating_sub(memory_available_mb),
+        memory_total_mb,
+        process_count: system.processes().len(),
+        sampled_at: Utc::now().to_rfc3339(),
     }
 }
 

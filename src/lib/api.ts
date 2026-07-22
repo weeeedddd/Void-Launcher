@@ -3,14 +3,22 @@ import type {
   CreateInstanceSpec,
   DeviceCodeInfo,
   HardwareReport,
+  LiveSystemMetrics,
+  MinecraftProcessStatus,
+  ProcessPriority,
   GameVideoSettings,
   InstalledMod,
   InstalledShader,
+  ModpackInstallOutcome,
+  ProvisionedModpackOutcome,
   Instance,
+  InstanceContentEntry,
   InstanceSettings,
   JavaRuntimeInfo,
   JavaStatus,
+  LaunchOptions,
   MinecraftProfile,
+  MicrosoftAccountSnapshot,
   ModLoader,
   ModVersionInfo,
   OptimizationOutcome,
@@ -27,6 +35,8 @@ import type {
   LauncherFolderKind,
   StorageCategory,
   StorageReport,
+  NetworkLatency,
+  MinecraftVersionCatalog,
 } from "@/types";
 
 /**
@@ -50,6 +60,15 @@ export const api = {
     invoke<MinecraftProfile>("complete_microsoft_login", { deviceCode }),
 
   restoreMicrosoftSession: () => invoke<MinecraftProfile | null>("restore_microsoft_session"),
+
+  listMicrosoftAccounts: () =>
+    invoke<MicrosoftAccountSnapshot>("list_microsoft_accounts"),
+
+  activateMicrosoftAccount: (accountId: string) =>
+    invoke<MinecraftProfile>("activate_microsoft_account", { accountId }),
+
+  removeMicrosoftAccount: (accountId: string) =>
+    invoke<MicrosoftAccountSnapshot>("remove_microsoft_account", { accountId }),
 
   // ── Spotify + Google/YouTube ───────────────────────────────────────────
   connectMusicProvider: (provider: MusicProvider) =>
@@ -82,7 +101,14 @@ export const api = {
   // ── Instances (modpack builder) ───────────────────────────────────────
   listInstances: () => invoke<Instance[]>("list_instances"),
 
+  listInstanceContent: (instanceId: string) =>
+    invoke<InstanceContentEntry[]>("list_instance_content", { instanceId }),
+
   createInstance: (spec: CreateInstanceSpec) => invoke<Instance>("create_instance", { spec }),
+
+  /** Stable Java releases from Mojang's official version manifest. */
+  getMinecraftVersionCatalog: () =>
+    invoke<MinecraftVersionCatalog>("get_minecraft_version_catalog"),
 
   updateInstanceSettings: (instanceId: string, settings: InstanceSettings) =>
     invoke<Instance>("update_instance_settings", { instanceId, settings }),
@@ -94,18 +120,32 @@ export const api = {
   installShader: (instanceId: string, platform: Platform, projectId: string) =>
     invoke<InstalledShader>("install_shader", { instanceId, platform, projectId }),
 
+  /** Downloads, verifies and imports a Modrinth/CurseForge manifest archive. */
+  installModpack: (instanceId: string, platform: Platform, projectId: string) =>
+    invoke<ModpackInstallOutcome>("install_modpack", { instanceId, platform, projectId }),
+
+  /** Creates a profile whose exact runtime is derived from the newest pack manifest. */
+  provisionModpack: (platform: Platform, projectId: string, instanceName: string) =>
+    invoke<ProvisionedModpackOutcome>("provision_modpack", { platform, projectId, instanceName }),
+
   /** Enable/disable an installed mod (renames the jar to `*.jar.disabled`). */
   setModEnabled: (instanceId: string, fileName: string, enabled: boolean) =>
     invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
 
   // ── Launching ─────────────────────────────────────────────────────────
   /** Installs, verifies and starts the selected instance with the native-held authenticated session. */
-  launchInstance: (instanceId: string) =>
-    invoke<void>("launch_instance", { instanceId, developerTestMode: false }),
+  launchInstance: (instanceId: string, options?: LaunchOptions) =>
+    invoke<void>("launch_instance", { instanceId, options }),
 
   // ── Performance Optimizer & Java management ───────────────────────────
   /** Scans CPU, RAM, GPU and disk (runs on a Rust worker thread). */
   getHardwareReport: () => invoke<HardwareReport>("get_hardware_report"),
+
+  getLiveSystemMetrics: () => invoke<LiveSystemMetrics>("get_live_system_metrics"),
+  getNetworkLatency: () => invoke<NetworkLatency>("get_network_latency"),
+  getMinecraftProcess: () => invoke<MinecraftProcessStatus>("get_minecraft_process"),
+  setMinecraftProcessPriority: (priority: ProcessPriority) =>
+    invoke<MinecraftProcessStatus>("set_minecraft_process_priority", { priority }),
 
   /** Which Java an instance needs and whether it's already managed. */
   getJavaStatus: (instanceId: string) => invoke<JavaStatus>("get_java_status", { instanceId }),

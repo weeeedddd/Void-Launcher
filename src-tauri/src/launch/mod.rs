@@ -4,19 +4,13 @@
 //! IMPLEMENTED here: JVM/game argument builders and the process spawn —
 //! the parts that are identical for every setup.
 //!
-//! STILL TODO (Roadmap → Milestone 3, see docs/CONCEPT.md):
-//!   1. Download the version manifest:
-//!      https://piston-meta.mojang.com/mc/game/version_manifest_v2.json
-//!   2. Download client.jar, libraries (respecting per-OS rules) and assets;
-//!      verify each file's SHA-1; extract LWJGL natives.
-//!   3. For modded instances, merge the loader profile:
-//!        Fabric:   https://meta.fabricmc.net/v2/versions/loader/<mc>  (easy)
-//!        NeoForge/Forge: run their installer processors           (involved)
-//!   4. Resolve a Java runtime (Mojang ships per-version JREs).
-//!   Shortcut worth evaluating: the `lyceris` crate implements this whole
-//!   pipeline (vanilla + Fabric/Forge/NeoForge/Quilt) and is MIT-licensed.
+//! The production launch command uses `lyceris` for version files, libraries,
+//! assets and loader resolution. `managed_launch` preserves its argument model
+//! while honoring the verified per-instance Java executable. The helpers below
+//! remain available for lower-level integrations and tests.
 
 pub mod commands;
+mod managed_launch;
 
 use std::path::{Path, PathBuf};
 

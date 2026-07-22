@@ -1,6 +1,7 @@
 //! Commands for the Performance Optimizer & Java management.
 
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 use tokio::task;
 use uuid::Uuid;
@@ -11,6 +12,92 @@ use super::optimizer::{self, LogKind, OptimizationLogEntry, OptimizationTier};
 use crate::error::LauncherError;
 use crate::instance::Instance;
 use crate::state::AppState;
+
+const MINECRAFT_VERSION_MANIFEST_URL: &str =
+    "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+
+#[derive(Debug, Deserialize)]
+struct MojangVersionManifest {
+    latest: MojangLatestVersions,
+    versions: Vec<MojangManifestVersion>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MojangLatestVersions {
+    release: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MojangManifestVersion {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(rename = "releaseTime")]
+    release_time: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinecraftReleaseVersion {
+    id: String,
+    release_time: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinecraftVersionCatalog {
+    latest_release: String,
+    releases: Vec<MinecraftReleaseVersion>,
+    fetched_at: String,
+}
+
+/// Fetches Mojang's authoritative Java version manifest and exposes stable
+/// releases only. Snapshots, pre-releases and release candidates stay out of
+/// normal player profiles.
+#[tauri::command]
+pub async fn get_minecraft_version_catalog(
+    state: State<'_, AppState>,
+) -> Result<MinecraftVersionCatalog, LauncherError> {
+    let manifest = state
+        .http
+        .get(MINECRAFT_VERSION_MANIFEST_URL)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<MojangVersionManifest>()
+        .await?;
+
+    let releases = manifest
+        .versions
+        .into_iter()
+        .filter(|version| version.kind == "release")
+        .filter(|version| is_supported_profile_release(&version.id))
+        .map(|version| MinecraftReleaseVersion {
+            id: version.id,
+            release_time: version.release_time,
+        })
+        .collect();
+
+    Ok(MinecraftVersionCatalog {
+        latest_release: manifest.latest.release,
+        releases,
+        fetched_at: chrono::Utc::now().to_rfc3339(),
+    })
+}
+
+fn is_supported_profile_release(version: &str) -> bool {
+    let parsed = version
+        .split('.')
+        .map(str::parse::<u32>)
+        .collect::<Result<Vec<_>, _>>();
+    let Ok(parts) = parsed else {
+        return false;
+    };
+    let first = parts.first().copied();
+    let second = parts.get(1).copied();
+    matches!((first, second), (Some(1), Some(minor)) if minor >= 1)
+        || matches!(first, Some(year) if year >= 26)
+}
 
 fn join_err(err: task::JoinError) -> LauncherError {
     LauncherError::Internal(format!("background task failed: {err}"))
@@ -26,6 +113,50 @@ pub async fn get_hardware_report(
     task::spawn_blocking(move || hardware::scan(&data_dir))
         .await
         .map_err(join_err)
+}
+
+/// Returns one real host CPU/RAM sample. The frontend never fabricates these
+/// values; this command is the source for the live performance panel.
+#[tauri::command]
+pub async fn get_live_system_metrics() -> Result<hardware::LiveSystemMetrics, LauncherError> {
+    task::spawn_blocking(hardware::sample_live)
+        .await
+        .map_err(join_err)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkLatency {
+    pub reachable: bool,
+    pub latency_ms: Option<u64>,
+    pub sampled_at: String,
+}
+
+/// Measures a real HTTPS round trip to Minecraft Services. A 401 response is
+/// still a successful connectivity sample: the endpoint was reached, but no
+/// access token was intentionally sent. This is labelled "MC API RTT" in the
+/// UI and must not be confused with in-game server ping.
+#[tauri::command]
+pub async fn get_network_latency(
+    state: State<'_, AppState>,
+) -> Result<NetworkLatency, LauncherError> {
+    let started = Instant::now();
+    let request = state
+        .http
+        .get("https://api.minecraftservices.com/minecraft/profile")
+        .send();
+    let reachable = matches!(
+        tokio::time::timeout(Duration::from_secs(5), request).await,
+        Ok(Ok(_))
+    );
+    let latency_ms =
+        reachable.then(|| u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
+
+    Ok(NetworkLatency {
+        reachable,
+        latency_ms,
+        sampled_at: chrono::Utc::now().to_rfc3339(),
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -275,7 +406,7 @@ fn replace_options(existing: &str, replacements: &[(&str, String)]) -> String {
 
 #[cfg(test)]
 mod video_settings_tests {
-    use super::replace_options;
+    use super::{is_supported_profile_release, replace_options};
 
     #[test]
     fn replaces_known_options_and_preserves_unrelated_lines() {
@@ -286,5 +417,15 @@ mod video_settings_tests {
         assert!(updated.contains("renderDistance:16"));
         assert!(updated.contains("music:0.5"));
         assert!(updated.contains("maxFps:120"));
+    }
+
+    #[test]
+    fn stable_profile_release_filter_accepts_modern_numbering() {
+        assert!(is_supported_profile_release("26.2"));
+        assert!(is_supported_profile_release("26.1.2"));
+        assert!(is_supported_profile_release("1.21.11"));
+        assert!(is_supported_profile_release("1.1"));
+        assert!(!is_supported_profile_release("1.0"));
+        assert!(!is_supported_profile_release("26.3-snapshot-5"));
     }
 }

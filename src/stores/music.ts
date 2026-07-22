@@ -1,5 +1,7 @@
 import { create } from "zustand";
+import { isTauri } from "@tauri-apps/api/core";
 import { api } from "@/lib/api";
+import { connectMusicProviderWithNotification } from "@/modules/void-client/notifications/notificationOperations";
 import type { MusicConnectionState, MusicPlaybackAction, MusicProvider, MusicTrack } from "@/types";
 
 export type MusicConnectionStatus = "disconnected" | "connecting" | "connected";
@@ -47,6 +49,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
 
   hydrate: async () => {
     if (get().hydrated) return;
+    if (!isTauri()) {
+      set({
+        hydrated: true,
+        message: "Music connections are available in the packaged Void Launcher.",
+      });
+      return;
+    }
     for (const provider of ["spotify", "youtube"] as const) {
       try {
         const connection = await api.getMusicConnection(provider);
@@ -62,9 +71,19 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   connect: async (provider) => {
+    if (!isTauri()) {
+      set({
+        status: "disconnected",
+        provider: null,
+        track: null,
+        error: "Music OAuth requires the packaged Void Launcher.",
+        hydrated: true,
+      });
+      return;
+    }
     set({ status: "connecting", provider, error: null, message: "Waiting for authorization in your browser…" });
     try {
-      const connection = await api.connectMusicProvider(provider);
+      const connection = await connectMusicProviderWithNotification(provider);
       set({ ...stateFromConnection(connection), hydrated: true });
     } catch (error) {
       set({ status: "disconnected", provider: null, track: null, message: null, error: String(error), hydrated: true });
@@ -72,6 +91,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   refresh: async () => {
+    if (!isTauri()) return;
     const provider = get().provider;
     if (!provider || get().status !== "connected") return;
     try {
@@ -83,6 +103,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   disconnect: async () => {
+    if (!isTauri()) {
+      set({ status: "disconnected", provider: null, displayName: null, avatarUrl: null, track: null, message: null, error: null });
+      return;
+    }
     const provider = get().provider;
     if (!provider) return;
     try {
@@ -93,6 +117,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   playback: async (action) => {
+    if (!isTauri()) {
+      set({ error: "Music playback requires the packaged Void Launcher." });
+      return;
+    }
     const provider = get().provider;
     if (!provider) return;
     set({ error: null });
@@ -111,6 +139,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   })),
 
   commitSeek: async () => {
+    if (!isTauri()) return;
     const { provider, track } = get();
     if (!provider || !track) return;
     try {

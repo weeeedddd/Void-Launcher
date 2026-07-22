@@ -88,6 +88,18 @@ export interface InstalledShader {
   fileName: string;
 }
 
+export interface ModpackInstallOutcome {
+  instanceId: string;
+  archiveVersion: string;
+  filesInstalled: number;
+}
+
+export interface ProvisionedModpackOutcome {
+  instance: Instance;
+  archiveVersion: string;
+  filesInstalled: number;
+}
+
 /** A game instance (= one modpack/profile). */
 export interface Instance {
   id: string;
@@ -105,10 +117,31 @@ export interface Instance {
   lastPlayedAt: string | null;
 }
 
+/** Real files discovered inside an instance's managed content directories. */
+export interface InstanceContentEntry {
+  kind: "mod" | "shader";
+  name: string;
+  fileName: string;
+  enabled: boolean;
+}
+
 export interface CreateInstanceSpec {
   name: string;
   gameVersion: string;
   loader: InstanceLoader;
+}
+
+/** One stable Java release returned by Mojang's official version manifest. */
+export interface MinecraftReleaseVersion {
+  id: string;
+  releaseTime: string;
+}
+
+/** Native, filtered view of Mojang's version manifest used by the profile UI. */
+export interface MinecraftVersionCatalog {
+  latestRelease: string;
+  releases: MinecraftReleaseVersion[];
+  fetchedAt: string;
 }
 
 export interface InstanceSettings {
@@ -133,6 +166,24 @@ export interface MinecraftProfile {
   name: string;
 }
 
+export type MicrosoftAccountStatus = "active" | "available" | "reauth-required";
+
+/** Public account-vault metadata. Credentials always remain in native Rust. */
+export interface MicrosoftAccountSummary {
+  id: string;
+  uuid: string;
+  username: string;
+  isActive: boolean;
+  stored: boolean;
+  status: MicrosoftAccountStatus;
+}
+
+export interface MicrosoftAccountSnapshot {
+  accounts: MicrosoftAccountSummary[];
+  activeAccountId: string | null;
+  authPersistence: "one-week" | "two-weeks" | "one-month" | "always-ask";
+}
+
 /* ── Performance Optimizer & Java management ──────────────────────────── */
 
 /** Snapshot of the machine, produced by the Rust `system::hardware` module. */
@@ -147,6 +198,21 @@ export interface HardwareReport {
   /** Disk hosting the launcher's data directory. */
   diskTotalGb: number;
   diskAvailableGb: number;
+}
+
+export interface LiveSystemMetrics {
+  cpuUsagePercent: number;
+  memoryUsedMb: number;
+  memoryTotalMb: number;
+  processCount: number;
+  sampledAt: string;
+}
+
+/** HTTPS round-trip sample to Minecraft Services, not an in-game server ping. */
+export interface NetworkLatency {
+  reachable: boolean;
+  latencyMs: number | null;
+  sampledAt: string;
 }
 
 /** Light / Balanced / Strong — how aggressively to tune the instance. */
@@ -199,6 +265,13 @@ export interface LauncherLogEvent {
   instanceId?: string;
 }
 
+/** Per-launch window overrides consumed directly by the native launcher. */
+export interface LaunchOptions {
+  width?: number;
+  height?: number;
+  fullscreen: boolean;
+}
+
 export interface GameVideoSettings {
   renderDistance: number;
   simulationDistance: number;
@@ -210,6 +283,16 @@ export interface DiscordRpcStatus {
   configured: boolean;
   connected: boolean;
   applicationId: string | null;
+  message: string;
+}
+
+export type ProcessPriority = "normal" | "high";
+
+export interface MinecraftProcessStatus {
+  pid: number | null;
+  running: boolean;
+  priority: string;
+  supported: boolean;
   message: string;
 }
 

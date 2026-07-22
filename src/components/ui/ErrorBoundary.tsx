@@ -22,11 +22,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render() {
     if (this.state.error) {
       return (
-        <main className="grid h-screen place-items-center bg-void-950 p-8 text-white">
-          <section className="max-w-lg rounded-2xl border border-red-500/20 bg-void-900 p-6 shadow-2xl">
-            <p className="text-xs font-bold tracking-[0.22em] text-red-300 uppercase">Interface error</p>
+        <main className="grid h-screen place-items-center bg-[#111111] p-8 text-white">
+          <section className="max-w-lg rounded-sm border border-[#333333] bg-[#1A1A1A] p-6">
+            <p className="text-xs font-bold tracking-[0.16em] text-[#FCA5A5] uppercase">Interface error</p>
             <h1 className="mt-2 text-xl font-bold">The launcher could not be rendered.</h1>
-            <p className="mt-3 select-text font-mono text-xs leading-6 text-ink-300">
+            <p className="mt-3 select-text font-mono text-xs leading-6 text-[#D4D4D4]">
               {this.state.error.message}
             </p>
           </section>

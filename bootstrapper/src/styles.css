@@ -2,20 +2,21 @@
 
 @theme {
   --font-sans: "Space Grotesk Variable", "Segoe UI Variable", "Segoe UI", sans-serif;
-  --font-display: "Orbitron", "Space Grotesk Variable", sans-serif;
+  --font-display: "Space Grotesk Variable", "Segoe UI Variable", "Segoe UI", sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 }
 
 :root {
   color: #ffffff;
-  background: #050505;
+  background: #111111;
   font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --void-obsidian: #050505;
-  --void-panel: #110d17;
+  --void-obsidian: #111111;
+  --void-panel: #1a1a1a;
   --void-violet: #7b2cbf;
+  --void-border: #333333;
 }
 
 * {
@@ -33,7 +34,7 @@ body,
 body {
   min-height: 100vh;
   overflow-x: hidden;
-  background: #050505;
+  background: #111111;
 }
 
 button,
@@ -54,7 +55,7 @@ button:disabled {
 
 ::selection {
   color: #ffffff;
-  background: rgba(123, 44, 191, 0.62);
+  background: #7b2cbf;
 }
 
 ::-webkit-scrollbar {
@@ -63,12 +64,12 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-track {
-  background: #08060b;
+  background: #111111;
 }
 
 ::-webkit-scrollbar-thumb {
-  border: 2px solid #08060b;
-  background: #47215f;
+  border: 2px solid #111111;
+  background: #333333;
 }
 
 @media (prefers-reduced-motion: reduce) {

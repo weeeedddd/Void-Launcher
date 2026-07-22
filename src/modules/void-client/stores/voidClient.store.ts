@@ -3,12 +3,11 @@ import { persist } from "zustand/middleware";
 import { DEFAULT_JVM_ARGUMENTS } from "../constants";
 import type {
   AuthenticationPersistence,
+  CatalogKind,
   ClientLanguageCode,
-  CrashLogDestination,
   GarbageCollectorPreset,
   ILaunchLogEntry,
   LauncherVisibility,
-  LogRetention,
   MissionVisibility,
   NotificationKind,
   NotificationPosition,
@@ -19,6 +18,7 @@ import type {
 
 export interface IVoidClientUiState {
   activeView: VoidView;
+  activeInstanceId: string | null;
   language: ClientLanguageCode;
   authPersistence: AuthenticationPersistence;
   settingsSection: SettingsSection;
@@ -28,34 +28,28 @@ export interface IVoidClientUiState {
   highThreadPriority: boolean;
   largePages: boolean;
   animatedRunes: boolean;
-  minimizeOnLaunch: boolean;
-  autoConnectVoice: boolean;
-  bloom: boolean;
-  lowLatencyMode: boolean;
-  nativeMemoryGuard: boolean;
   resolutionWidth: number;
   resolutionHeight: number;
   fullscreen: boolean;
   lockAspectRatio: boolean;
-  ignoreForgeProcessorHash: boolean;
   launcherVisibility: LauncherVisibility;
   missionVisibility: MissionVisibility;
-  logRetention: LogRetention;
   notificationPosition: NotificationPosition;
   notifications: Record<NotificationKind, boolean>;
   discordRpcEnabled: boolean;
+  discordRpcConnected: boolean;
+  discordRpcPending: boolean;
+  discordRpcError: string | null;
+  discordRpcMessage: string;
   hideRpcWhenIdle: boolean;
   rpcLanguage: RpcLanguage;
-  analyticsEnabled: boolean;
-  autoUploadCrashLogs: boolean;
-  crashLogDestination: CrashLogDestination;
-  crashScreenOpen: boolean;
-  launchLoadUntil: number;
   launchOverlayOpen: boolean;
   missionControlOpen: boolean;
   launchInstanceName: string;
   launchLogs: ILaunchLogEntry[];
+  catalogKind: CatalogKind;
   setActiveView: (view: VoidView) => void;
+  setActiveInstanceId: (instanceId: string | null) => void;
   setLanguage: (language: ClientLanguageCode) => void;
   setAuthPersistence: (persistence: AuthenticationPersistence) => void;
   setSettingsSection: (section: SettingsSection) => void;
@@ -66,33 +60,28 @@ export interface IVoidClientUiState {
   setResolutionHeight: (height: number) => void;
   setLauncherVisibility: (visibility: LauncherVisibility) => void;
   setMissionVisibility: (visibility: MissionVisibility) => void;
-  setLogRetention: (retention: LogRetention) => void;
   setNotificationPosition: (position: NotificationPosition) => void;
   setRpcLanguage: (language: RpcLanguage) => void;
-  setCrashLogDestination: (destination: CrashLogDestination) => void;
-  setCrashScreenOpen: (open: boolean) => void;
-  signalLaunchLoad: (durationMs: number) => void;
+  setDiscordRpcEnabled: (enabled: boolean) => void;
+  setDiscordRpcRuntime: (runtime: {
+    connected: boolean;
+    pending: boolean;
+    error: string | null;
+    message: string;
+  }) => void;
   beginLaunch: (instanceName: string) => void;
   appendLaunchLog: (entry: Omit<ILaunchLogEntry, "id">) => void;
   finishLaunch: (message?: string, failed?: boolean) => void;
   setMissionControlOpen: (open: boolean) => void;
   clearLaunchLogs: () => void;
+  setCatalogKind: (kind: CatalogKind) => void;
   toggleAnimatedRunes: () => void;
-  toggleMinimizeOnLaunch: () => void;
-  toggleAutoConnectVoice: () => void;
-  toggleBloom: () => void;
-  toggleLowLatencyMode: () => void;
-  toggleNativeMemoryGuard: () => void;
   toggleHighThreadPriority: () => void;
   toggleLargePages: () => void;
   toggleFullscreen: () => void;
   toggleLockAspectRatio: () => void;
-  toggleIgnoreForgeProcessorHash: () => void;
   toggleNotification: (kind: NotificationKind) => void;
-  toggleDiscordRpc: () => void;
   toggleHideRpcWhenIdle: () => void;
-  toggleAnalytics: () => void;
-  toggleAutoUploadCrashLogs: () => void;
   resetSettings: () => void;
   reset: () => void;
 }
@@ -122,27 +111,17 @@ const SETTINGS_DEFAULTS = {
   highThreadPriority: true,
   largePages: false,
   animatedRunes: true,
-  minimizeOnLaunch: true,
-  autoConnectVoice: false,
-  bloom: true,
-  lowLatencyMode: true,
-  nativeMemoryGuard: true,
   resolutionWidth: 1920,
   resolutionHeight: 1080,
   fullscreen: false,
   lockAspectRatio: true,
-  ignoreForgeProcessorHash: false,
   launcherVisibility: "hide" as LauncherVisibility,
-  missionVisibility: "best-monitor" as MissionVisibility,
-  logRetention: "thirty-days" as LogRetention,
+  missionVisibility: "auto-open" as MissionVisibility,
   notificationPosition: "bottom-right" as NotificationPosition,
   notifications: DEFAULT_NOTIFICATIONS,
   discordRpcEnabled: false,
   hideRpcWhenIdle: false,
   rpcLanguage: "english" as RpcLanguage,
-  analyticsEnabled: false,
-  autoUploadCrashLogs: false,
-  crashLogDestination: "void-native" as CrashLogDestination,
 };
 
 const clampResolution = (value: number, minimum: number, maximum: number) =>
@@ -154,26 +133,35 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
       const resetSettings = () => set((state) => ({
         ...SETTINGS_DEFAULTS,
         activeView: state.activeView,
-        crashScreenOpen: false,
-        launchLoadUntil: 0,
+        activeInstanceId: state.activeInstanceId,
         launchOverlayOpen: false,
         missionControlOpen: false,
         launchInstanceName: "",
         launchLogs: [],
+        catalogKind: "mod",
         notifications: { ...DEFAULT_NOTIFICATIONS },
+        discordRpcConnected: false,
+        discordRpcPending: false,
+        discordRpcError: null,
+        discordRpcMessage: "Discord Rich Presence is disabled.",
       }));
 
       return {
         activeView: "dashboard",
+        activeInstanceId: null,
         ...SETTINGS_DEFAULTS,
         notifications: { ...DEFAULT_NOTIFICATIONS },
-        crashScreenOpen: false,
-        launchLoadUntil: 0,
+        discordRpcConnected: false,
+        discordRpcPending: false,
+        discordRpcError: null,
+        discordRpcMessage: "Discord Rich Presence is disabled.",
         launchOverlayOpen: false,
         missionControlOpen: false,
         launchInstanceName: "",
         launchLogs: [],
+        catalogKind: "mod",
         setActiveView: (activeView) => set({ activeView }),
+        setActiveInstanceId: (activeInstanceId) => set({ activeInstanceId }),
         setLanguage: (language) => set({ language }),
         setAuthPersistence: (authPersistence) => set({ authPersistence }),
         setSettingsSection: (settingsSection) => set({ settingsSection }),
@@ -193,18 +181,22 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
             : { resolutionHeight };
         }),
         setLauncherVisibility: (launcherVisibility) => set({ launcherVisibility }),
-        setMissionVisibility: (missionVisibility) => set({ missionVisibility }),
-        setLogRetention: (logRetention) => set({ logRetention }),
+        setMissionVisibility: (missionVisibility) => set((state) => ({
+          missionVisibility,
+          missionControlOpen: missionVisibility === "hidden" ? false : state.missionControlOpen,
+        })),
         setNotificationPosition: (notificationPosition) => set({ notificationPosition }),
         setRpcLanguage: (rpcLanguage) => set({ rpcLanguage }),
-        setCrashLogDestination: (crashLogDestination) => set({ crashLogDestination }),
-        setCrashScreenOpen: (crashScreenOpen) => set({ crashScreenOpen }),
-        signalLaunchLoad: (durationMs) => set((state) => ({
-          launchLoadUntil: Math.max(state.launchLoadUntil, Date.now() + Math.max(0, durationMs)),
-        })),
-        beginLaunch: (launchInstanceName) => set({
+        setDiscordRpcEnabled: (discordRpcEnabled) => set({ discordRpcEnabled }),
+        setDiscordRpcRuntime: ({ connected, pending, error, message }) => set({
+          discordRpcConnected: connected,
+          discordRpcPending: pending,
+          discordRpcError: error,
+          discordRpcMessage: message,
+        }),
+        beginLaunch: (launchInstanceName) => set((state) => ({
           launchOverlayOpen: true,
-          missionControlOpen: true,
+          missionControlOpen: state.missionVisibility === "auto-open",
           launchInstanceName,
           launchLogs: [{
             id: `ui-${Date.now()}-queued`,
@@ -213,14 +205,14 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
             phase: "queued",
             message: `Preparing ${launchInstanceName} for launch.`,
           }],
-        }),
+        })),
         appendLaunchLog: (entry) => set((state) => ({
-          missionControlOpen: true,
+          missionControlOpen: state.missionVisibility === "hidden" ? false : state.missionControlOpen,
           launchLogs: [...state.launchLogs, { ...entry, id: `${entry.timestamp}-${state.launchLogs.length}` }].slice(-160),
         })),
         finishLaunch: (message, failed = false) => set((state) => ({
           launchOverlayOpen: false,
-          missionControlOpen: true,
+          missionControlOpen: state.missionVisibility === "hidden" ? false : state.missionControlOpen,
           launchLogs: message ? [...state.launchLogs, {
             id: `ui-${Date.now()}-finished`,
             timestamp: new Date().toISOString(),
@@ -229,14 +221,12 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
             message,
           }].slice(-160) : state.launchLogs,
         })),
-        setMissionControlOpen: (missionControlOpen) => set({ missionControlOpen }),
+        setMissionControlOpen: (missionControlOpen) => set((state) => ({
+          missionControlOpen: state.missionVisibility === "hidden" ? false : missionControlOpen,
+        })),
         clearLaunchLogs: () => set({ launchLogs: [] }),
+        setCatalogKind: (catalogKind) => set({ catalogKind }),
         toggleAnimatedRunes: () => set((state) => ({ animatedRunes: !state.animatedRunes })),
-        toggleMinimizeOnLaunch: () => set((state) => ({ minimizeOnLaunch: !state.minimizeOnLaunch })),
-        toggleAutoConnectVoice: () => set((state) => ({ autoConnectVoice: !state.autoConnectVoice })),
-        toggleBloom: () => set((state) => ({ bloom: !state.bloom })),
-        toggleLowLatencyMode: () => set((state) => ({ lowLatencyMode: !state.lowLatencyMode })),
-        toggleNativeMemoryGuard: () => set((state) => ({ nativeMemoryGuard: !state.nativeMemoryGuard })),
         toggleHighThreadPriority: () => set((state) => ({ highThreadPriority: !state.highThreadPriority })),
         toggleLargePages: () => set((state) => ({ largePages: !state.largePages })),
         toggleFullscreen: () => set((state) => ({ fullscreen: !state.fullscreen })),
@@ -246,22 +236,25 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
             ? clampResolution((state.resolutionWidth * 9) / 16, 600, 4_320)
             : state.resolutionHeight,
         })),
-        toggleIgnoreForgeProcessorHash: () => set((state) => ({ ignoreForgeProcessorHash: !state.ignoreForgeProcessorHash })),
         toggleNotification: (kind) => set((state) => ({ notifications: { ...state.notifications, [kind]: !state.notifications[kind] } })),
-        toggleDiscordRpc: () => set((state) => ({ discordRpcEnabled: !state.discordRpcEnabled })),
         toggleHideRpcWhenIdle: () => set((state) => ({ hideRpcWhenIdle: !state.hideRpcWhenIdle })),
-        toggleAnalytics: () => set((state) => ({ analyticsEnabled: !state.analyticsEnabled })),
-        toggleAutoUploadCrashLogs: () => set((state) => ({ autoUploadCrashLogs: !state.autoUploadCrashLogs })),
         resetSettings,
         reset: resetSettings,
       };
     },
     {
       name: "void-client-ui",
-      version: 3,
+      version: 7,
       migrate: (persistedState) => {
         const previous = persistedState as Partial<IVoidClientUiState>;
+        const previousMissionVisibility = previous.missionVisibility as MissionVisibility | "best-monitor" | "background" | undefined;
+        const missionVisibility: MissionVisibility = previousMissionVisibility === "best-monitor"
+          ? "auto-open"
+          : previousMissionVisibility === "background"
+            ? "manual"
+            : previousMissionVisibility ?? SETTINGS_DEFAULTS.missionVisibility;
         return {
+          activeInstanceId: previous.activeInstanceId ?? null,
           settingsSection: previous.settingsSection ?? SETTINGS_DEFAULTS.settingsSection,
           language: previous.language ?? SETTINGS_DEFAULTS.language,
           authPersistence: previous.authPersistence ?? SETTINGS_DEFAULTS.authPersistence,
@@ -271,30 +264,22 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
           highThreadPriority: previous.highThreadPriority ?? SETTINGS_DEFAULTS.highThreadPriority,
           largePages: previous.largePages ?? SETTINGS_DEFAULTS.largePages,
           animatedRunes: previous.animatedRunes ?? SETTINGS_DEFAULTS.animatedRunes,
-          minimizeOnLaunch: previous.minimizeOnLaunch ?? SETTINGS_DEFAULTS.minimizeOnLaunch,
-          autoConnectVoice: previous.autoConnectVoice ?? SETTINGS_DEFAULTS.autoConnectVoice,
-          bloom: previous.bloom ?? SETTINGS_DEFAULTS.bloom,
-          lowLatencyMode: previous.lowLatencyMode ?? SETTINGS_DEFAULTS.lowLatencyMode,
-          nativeMemoryGuard: previous.nativeMemoryGuard ?? SETTINGS_DEFAULTS.nativeMemoryGuard,
           resolutionWidth: previous.resolutionWidth ?? SETTINGS_DEFAULTS.resolutionWidth,
           resolutionHeight: previous.resolutionHeight ?? SETTINGS_DEFAULTS.resolutionHeight,
           fullscreen: previous.fullscreen ?? SETTINGS_DEFAULTS.fullscreen,
           lockAspectRatio: previous.lockAspectRatio ?? SETTINGS_DEFAULTS.lockAspectRatio,
-          ignoreForgeProcessorHash: previous.ignoreForgeProcessorHash ?? SETTINGS_DEFAULTS.ignoreForgeProcessorHash,
           launcherVisibility: previous.launcherVisibility ?? SETTINGS_DEFAULTS.launcherVisibility,
-          missionVisibility: previous.missionVisibility ?? SETTINGS_DEFAULTS.missionVisibility,
-          logRetention: previous.logRetention ?? SETTINGS_DEFAULTS.logRetention,
+          missionVisibility,
           notificationPosition: previous.notificationPosition ?? SETTINGS_DEFAULTS.notificationPosition,
           notifications: { ...DEFAULT_NOTIFICATIONS, ...(previous.notifications ?? {}) },
           discordRpcEnabled: previous.discordRpcEnabled ?? SETTINGS_DEFAULTS.discordRpcEnabled,
           hideRpcWhenIdle: previous.hideRpcWhenIdle ?? SETTINGS_DEFAULTS.hideRpcWhenIdle,
           rpcLanguage: previous.rpcLanguage ?? SETTINGS_DEFAULTS.rpcLanguage,
-          analyticsEnabled: previous.analyticsEnabled ?? SETTINGS_DEFAULTS.analyticsEnabled,
-          autoUploadCrashLogs: previous.autoUploadCrashLogs ?? SETTINGS_DEFAULTS.autoUploadCrashLogs,
-          crashLogDestination: previous.crashLogDestination ?? SETTINGS_DEFAULTS.crashLogDestination,
+          catalogKind: previous.catalogKind ?? "mod",
         };
       },
       partialize: (state) => ({
+        activeInstanceId: state.activeInstanceId,
         settingsSection: state.settingsSection,
         language: state.language,
         authPersistence: state.authPersistence,
@@ -304,27 +289,18 @@ export const useVoidClientStore = create<IVoidClientUiState>()(
         highThreadPriority: state.highThreadPriority,
         largePages: state.largePages,
         animatedRunes: state.animatedRunes,
-        minimizeOnLaunch: state.minimizeOnLaunch,
-        autoConnectVoice: state.autoConnectVoice,
-        bloom: state.bloom,
-        lowLatencyMode: state.lowLatencyMode,
-        nativeMemoryGuard: state.nativeMemoryGuard,
         resolutionWidth: state.resolutionWidth,
         resolutionHeight: state.resolutionHeight,
         fullscreen: state.fullscreen,
         lockAspectRatio: state.lockAspectRatio,
-        ignoreForgeProcessorHash: state.ignoreForgeProcessorHash,
         launcherVisibility: state.launcherVisibility,
         missionVisibility: state.missionVisibility,
-        logRetention: state.logRetention,
         notificationPosition: state.notificationPosition,
         notifications: state.notifications,
         discordRpcEnabled: state.discordRpcEnabled,
         hideRpcWhenIdle: state.hideRpcWhenIdle,
         rpcLanguage: state.rpcLanguage,
-        analyticsEnabled: state.analyticsEnabled,
-        autoUploadCrashLogs: state.autoUploadCrashLogs,
-        crashLogDestination: state.crashLogDestination,
+        catalogKind: state.catalogKind,
       }),
     },
   ),

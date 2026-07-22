@@ -1,1123 +1,148 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-} from "react";
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "@/lib/api";
-import type {
-  Instance,
-  ModLoader,
-  ModSummary,
-  Platform,
-  ProjectType,
-  SearchResultPage,
-  SearchSort,
-} from "@/types";
+import type { CreateInstanceSpec, Instance, InstanceLoader, ModLoader, ModSummary, Platform, ProjectType, SearchSort } from "@/types";
 import { ShadowGlyph } from "../../../components/ShadowGlyph";
+import {
+  installModpackWithNotification,
+  installModWithNotification,
+  installShaderWithNotification,
+  provisionModpackWithNotification,
+} from "../../../notifications/notificationOperations";
 import type { IInstallState } from "../../../types";
-import { AutoTuneModal } from "./AutoTuneModal";
+import { useVoidClientStore } from "../../../stores/voidClient.store";
 import { voidClientStyles } from "../void-client.styles";
 
-type SourceFilter = "all" | Platform;
-type SortOption = SearchSort;
-
 const PAGE_SIZE = 24;
-const SOURCE_OPTIONS: readonly {
-  id: SourceFilter;
-  label: string;
-  detail: string;
-}[] = [
-  { id: "all", label: "All sources", detail: "Modrinth + CurseForge" },
-  { id: "modrinth", label: "Modrinth", detail: "Open ecosystem" },
-  { id: "curseforge", label: "CurseForge", detail: "Curated vault" },
-] as const;
-const KIND_OPTIONS: readonly { id: ProjectType; label: string }[] = [
-  { id: "mod", label: "Mods" },
-  { id: "modpack", label: "Modpacks" },
-  { id: "shader", label: "Shaders" },
-] as const;
-const SORT_OPTIONS: readonly { id: SortOption; label: string }[] = [
-  { id: "relevance", label: "Relevance" },
-  { id: "downloads", label: "Downloads" },
-  { id: "updated", label: "Recently updated" },
-  { id: "name", label: "Name" },
-] as const;
-const GAME_VERSION_OPTIONS = [
-  "all",
-  "1.21.1",
-  "1.21",
-  "1.20.6",
-  "1.20.1",
-  "1.19.4",
-  "1.18.2",
-] as const;
-const LOADER_OPTIONS = ["all", "fabric", "forge", "neoforge", "quilt"] as const;
+const GAME_VERSIONS = ["all", "1.21.1", "1.21", "1.20.6", "1.20.1", "1.19.4", "1.18.2"] as const;
+const LOADERS = ["all", "fabric", "forge", "neoforge", "quilt"] as const;
+const PROJECT_TYPES: readonly { id: ProjectType; label: string }[] = [{ id: "mod", label: "Mods" }, { id: "modpack", label: "Modpacks" }, { id: "shader", label: "Shaders" }];
+const SORTS: readonly { id: SearchSort; label: string }[] = [{ id: "relevance", label: "Relevance" }, { id: "downloads", label: "Downloads" }, { id: "updated", label: "Recently updated" }, { id: "name", label: "Name" }];
 
-type CombinedPage = SearchResultPage & { warning?: string };
+type SourceFilter = "all" | Platform;
+type SearchPayload = { items: ModSummary[]; total: number; warning: string | null };
 
 export function ModHubView() {
   const [source, setSource] = useState<SourceFilter>("all");
-  const [kind, setKind] = useState<ProjectType>("mod");
-  const [sortBy, setSortBy] = useState<SortOption>("relevance");
-  const [gameVersion, setGameVersion] =
-    useState<(typeof GAME_VERSION_OPTIONS)[number]>("all");
-  const [loader, setLoader] = useState<(typeof LOADER_OPTIONS)[number]>("all");
-  const [category, setCategory] = useState("all");
+  const kind = useVoidClientStore((state) => state.catalogKind);
+  const setCatalogKind = useVoidClientStore((state) => state.setCatalogKind);
+  const activeInstanceId = useVoidClientStore((state) => state.activeInstanceId);
+  const setActiveInstanceId = useVoidClientStore((state) => state.setActiveInstanceId);
+  const [sort, setSort] = useState<SearchSort>("relevance");
+  const [gameVersion, setGameVersion] = useState<(typeof GAME_VERSIONS)[number]>("all");
+  const [loader, setLoader] = useState<(typeof LOADERS)[number]>("all");
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [keyPanelOpen, setKeyPanelOpen] = useState(false);
+  const [page, setPage] = useState(0);
+  const [keyOpen, setKeyOpen] = useState(false);
   const [curseforgeKey, setCurseforgeKey] = useState("");
   const [targetProject, setTargetProject] = useState<ModSummary | null>(null);
   const [targetInstanceId, setTargetInstanceId] = useState("");
-  const [installStates, setInstallStates] = useState<
-    Record<string, IInstallState>
-  >({});
-  const [autoTuneInstance, setAutoTuneInstance] = useState<Instance | null>(
-    null,
-  );
+  const [newInstanceName, setNewInstanceName] = useState("");
+  const [newInstanceVersion, setNewInstanceVersion] = useState("1.21.1");
+  const [newInstanceLoader, setNewInstanceLoader] = useState<InstanceLoader>("fabric");
+  const [installStates, setInstallStates] = useState<Record<string, IInstallState>>({});
   const queryClient = useQueryClient();
-  const instancesQuery = useQuery({
-    queryKey: ["instances"],
-    queryFn: api.listInstances,
-  });
-  const settingsStatus = useQuery({
-    queryKey: ["settings-status"],
-    queryFn: api.getSettingsStatus,
-  });
-  const saveCurseforgeKey = useMutation({
-    mutationFn: (apiKey: string | null) => api.setCurseforgeApiKey(apiKey),
-    onSuccess: (status) => {
-      queryClient.setQueryData(["settings-status"], status);
-      setCurseforgeKey("");
-      void queryClient.invalidateQueries({ queryKey: ["shadow-archive"] });
+  const instancesQuery = useQuery({ queryKey: ["instances"], queryFn: async () => (isTauri() ? api.listInstances() : []), retry: false });
+  const settingsQuery = useQuery({ queryKey: ["settings-status"], queryFn: api.getSettingsStatus, enabled: isTauri(), retry: false });
+
+  useEffect(() => setPage(0), [source, kind, sort, gameVersion, loader, query]);
+
+  const searchQuery = useQuery<SearchPayload>({
+    queryKey: ["shadow-archive", source, kind, sort, gameVersion, loader, query.trim(), page],
+    queryFn: async () => {
+      const platforms: Platform[] = source === "all" ? ["modrinth", "curseforge"] : [source];
+      const results = await Promise.allSettled(platforms.map((platform) => api.searchMods({ platform, query: query.trim().slice(0, 100), projectType: kind, sort, gameVersion: gameVersion === "all" ? undefined : gameVersion, loader: loader === "all" ? undefined : loader as ModLoader, limit: PAGE_SIZE, offset: page * PAGE_SIZE })));
+      const pages = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      if (pages.length === 0) throw new Error(results.map((result) => result.status === "rejected" ? String(result.reason) : "").filter(Boolean).join("; ") || "No platform response received.");
+      const failed = results.some((result) => result.status === "rejected");
+      return { items: pages.flatMap((entry) => entry.items), total: pages.reduce((sum, entry) => sum + entry.total, 0), warning: failed ? "One catalog is unavailable. The visible results are from the responding source." : null };
     },
+    enabled: isTauri(),
+    retry: false,
   });
+
+  const saveKey = useMutation({ mutationFn: (value: string | null) => api.setCurseforgeApiKey(value), onSuccess: (status) => { queryClient.setQueryData(["settings-status"], status); setCurseforgeKey(""); void queryClient.invalidateQueries({ queryKey: ["shadow-archive"] }); } });
   const installProject = useMutation({
-    mutationFn: async ({
-      project,
-      instanceId,
-    }: {
-      project: ModSummary;
-      instanceId: string;
-    }) => {
-      if (project.projectType === "modpack") {
-        throw new Error(
-          "Complete modpack imports must be opened on the source page until manifest import is available.",
-        );
-      }
-      if (project.projectType === "shader")
-        return api.installShader(instanceId, project.platform, project.id);
-      return api.installMod(instanceId, project.platform, project.id);
-    },
-    onMutate: ({ project }) => {
-      const key = `${project.platform}:${project.id}`;
-      setInstallStates((current) => ({
-        ...current,
-        [key]: { phase: "installing", progress: 48 },
-      }));
-    },
-    onSuccess: async (_installed, { project }) => {
-      const key = `${project.platform}:${project.id}`;
-      setInstallStates((current) => ({
-        ...current,
-        [key]: { phase: "installed", progress: 100 },
-      }));
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-    },
-    onError: (_error, { project }) => {
-      const key = `${project.platform}:${project.id}`;
-      setInstallStates((current) => ({
-        ...current,
-        [key]: { phase: "idle", progress: 0 },
-      }));
-    },
-  });
-
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => setDebouncedQuery(query.trim().slice(0, 100)),
-      280,
-    );
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  const search = useInfiniteQuery({
-    queryKey: [
-      "shadow-archive",
-      source,
-      kind,
-      sortBy,
-      gameVersion,
-      loader,
-      debouncedQuery,
-    ],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }): Promise<CombinedPage> => {
-      const platforms: Platform[] =
-        source === "all" ? ["modrinth", "curseforge"] : [source];
-      const results = await Promise.allSettled(
-        platforms.map((platform) =>
-          api.searchMods({
-            platform,
-            query: debouncedQuery,
-            projectType: kind,
-            sort: sortBy,
-            gameVersion: gameVersion === "all" ? undefined : gameVersion,
-            loader: loader === "all" ? undefined : (loader as ModLoader),
-            limit: PAGE_SIZE,
-            offset: pageParam * PAGE_SIZE,
-          }),
-        ),
-      );
-      const pages = results.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : [],
-      );
-      const failed = results.filter(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected",
-      );
-      if (pages.length === 0) {
-        throw new Error(
-          failed.map((result) => String(result.reason)).join("; ") ||
-            "No platform response received.",
-        );
-      }
-      return {
-        items: pages.flatMap((page) => page.items),
-        total: pages.reduce((sum, page) => sum + page.total, 0),
-        offset: pageParam * PAGE_SIZE,
-        limit: pages.reduce((sum, page) => sum + page.limit, 0),
-        warning:
-          failed.length > 0
-            ? "One source is unavailable. Modrinth results remain live; configure CurseForge to search both vaults."
-            : undefined,
-      };
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((sum, page) => sum + page.items.length, 0);
-      return loaded < lastPage.total && lastPage.items.length > 0
-        ? allPages.length
-        : undefined;
-    },
-    staleTime: 45_000,
-  });
-
-  const allItems = useMemo(
-    () => search.data?.pages.flatMap((page) => page.items) ?? [],
-    [search.data?.pages],
-  );
-  const categoryOptions = useMemo(
-    () => [
-      "all",
-      ...Array.from(
-        new Set(allItems.flatMap((item) => item.categories)),
-      ).sort(),
-    ],
-    [allItems],
-  );
-  const visibleItems = useMemo(() => {
-    const filtered =
-      category === "all"
-        ? allItems
-        : allItems.filter((item) => item.categories.includes(category));
-    if (sortBy !== "name") return filtered;
-    return [...filtered].sort((left, right) =>
-      left.name.localeCompare(right.name),
-    );
-  }, [allItems, category, sortBy]);
-
-  const updateQuery = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value),
-    [],
-  );
-  const clearFilters = useCallback(() => {
-    setSource("all");
-    setKind("mod");
-    setSortBy("relevance");
-    setCategory("all");
-    setGameVersion("all");
-    setLoader("all");
-    setQuery("");
-  }, []);
-  const openProject = useCallback((item: ModSummary) => {
-    if (
-      /^https:\/\/(www\.)?(modrinth\.com|curseforge\.com)\//.test(item.pageUrl)
-    )
-      void openUrl(item.pageUrl);
-  }, []);
-  const openTargetSelector = useCallback(
-    (item: ModSummary) => {
-      setTargetProject(item);
-      setTargetInstanceId(
-        (current) => current || instancesQuery.data?.[0]?.id || "",
-      );
-      installProject.reset();
-    },
-    [installProject, instancesQuery.data],
-  );
-  const closeTargetSelector = useCallback(() => {
-    if (!installProject.isPending) setTargetProject(null);
-  }, [installProject.isPending]);
-  const confirmInstall = useCallback(() => {
-    if (targetProject && targetInstanceId && !installProject.isPending) {
-      installProject.mutate({
-        project: targetProject,
-        instanceId: targetInstanceId,
-      });
-    }
-  }, [installProject, targetInstanceId, targetProject]);
-  const getInstallState = useCallback(
-    (key: string): IInstallState =>
-      installStates[key] ?? { phase: "idle", progress: 0 },
-    [installStates],
-  );
-  const toggleKeyPanel = useCallback(() => {
-    setKeyPanelOpen((current) => !current);
-    saveCurseforgeKey.reset();
-  }, [saveCurseforgeKey]);
-  const submitCurseforgeKey = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const normalized = curseforgeKey.trim();
-      if (normalized) saveCurseforgeKey.mutate(normalized);
-    },
-    [curseforgeKey, saveCurseforgeKey],
-  );
-  const removeCurseforgeKey = useCallback(
-    () => saveCurseforgeKey.mutate(null),
-    [saveCurseforgeKey],
-  );
-
-  const total = search.data?.pages[0]?.total ?? 0;
-  const warning = search.data?.pages.find((page) => page.warning)?.warning;
-  const hasFilters =
-    source !== "all" ||
-    kind !== "mod" ||
-    sortBy !== "relevance" ||
-    category !== "all" ||
-    gameVersion !== "all" ||
-    loader !== "all" ||
-    query.length > 0;
-
-  return (
-    <div className={voidClientStyles.page}>
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-5">
-        <div className="max-w-3xl">
-          <p className={voidClientStyles.sectionKicker}>Live catalog search</p>
-          <h1 className={voidClientStyles.pageTitle}>Shadow Archive</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8d8198]">
-            Browse the real Modrinth and CurseForge catalogs. Results are
-            fetched from the selected source and loaded continuously, so the
-            archive is not capped at ten cards.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={toggleKeyPanel}
-            aria-expanded={keyPanelOpen}
-            className={`${voidClientStyles.secondaryButton} min-h-12`}
-          >
-            <ShadowGlyph name="shield" size={16} />
-            CurseForge key
-            <span
-              className={`size-1.5 rounded-full ${settingsStatus.data?.curseforgeConfigured ? "bg-[#4cff9a] shadow-[0_0_9px_currentColor]" : "bg-amber-300"}`}
-            />
-          </button>
-          <div className="flex items-center gap-3 rounded-2xl border border-[#7B2CBF]/20 bg-[#7B2CBF]/[0.065] px-4 py-3 shadow-[0_0_34px_rgba(123,44,191,0.1)]">
-            <span className="grid size-9 place-items-center rounded-xl border border-[#b36dff]/25 bg-black/25 text-[#d8b4fe]">
-              <ShadowGlyph name="mods" size={18} />
-            </span>
-            <span>
-              <strong className="block text-xs text-white">
-                {total.toLocaleString()} matching projects
-              </strong>
-              <small className="mt-0.5 block text-[9px] font-bold tracking-[0.1em] text-[#8d8198] uppercase">
-                Live API index
-              </small>
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <AnimatePresence initial={false}>
-        {keyPanelOpen && (
-          <motion.form
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            onSubmit={submitCurseforgeKey}
-            className={`${voidClientStyles.glassCard} mb-5 grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)_auto] xl:items-end`}
-          >
-            <div>
-              <p className={voidClientStyles.sectionKicker}>
-                CurseForge Core authentication
-              </p>
-              <h2 className="mt-1 text-sm font-black text-white">
-                CurseForge API access
-              </h2>
-              <p className="mt-2 text-[10px] leading-5 text-[#a79bad]">
-                Generate the key in the CurseForge developer console. Current
-                Core API keys may begin with{" "}
-                <code className="rounded bg-black/35 px-1.5 py-0.5 text-amber-200">
-                  $2a$
-                </code>{" "}
-                and are accepted without changing or escaping the dollar signs.
-                The value is encrypted for the current Windows user.
-              </p>
-            </div>
-            <label htmlFor="curseforge-core-key">
-              <span className="mb-1.5 block text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">
-                New Core API key
-              </span>
-              <input
-                id="curseforge-core-key"
-                type="password"
-                value={curseforgeKey}
-                onChange={(event) => {
-                  setCurseforgeKey(event.target.value.slice(0, 512));
-                  saveCurseforgeKey.reset();
-                }}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="Paste the API key from console.curseforge.com"
-                className={voidClientStyles.input}
-              />
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={!curseforgeKey.trim() || saveCurseforgeKey.isPending}
-                className={`${voidClientStyles.primaryButton} min-h-11 flex-1`}
-              >
-                <ShadowGlyph name="check" size={15} />
-                Save
-              </button>
-              {settingsStatus.data?.curseforgeConfigured && (
-                <button
-                  type="button"
-                  onClick={removeCurseforgeKey}
-                  disabled={saveCurseforgeKey.isPending}
-                  className={`${voidClientStyles.secondaryButton} min-h-11`}
-                >
-                  <ShadowGlyph name="trash" size={15} />
-                  Remove
-                </button>
-              )}
-            </div>
-            {saveCurseforgeKey.isError && (
-              <p
-                role="alert"
-                className="xl:col-span-3 text-[10px] leading-4 text-red-300"
-              >
-                {String(saveCurseforgeKey.error)}
-              </p>
-            )}
-            {saveCurseforgeKey.isSuccess && (
-              <p
-                role="status"
-                className="xl:col-span-3 text-[10px] text-[#4cff9a]"
-              >
-                CurseForge setting updated. The live archive is refreshing.
-              </p>
-            )}
-          </motion.form>
-        )}
-      </AnimatePresence>
-
-      <section
-        className={`${voidClientStyles.glassCard} mb-5 p-4 sm:p-5`}
-        aria-label="Archive filters"
-      >
-        <div className="pointer-events-none absolute -top-20 right-[8%] size-48 rounded-full bg-[#7B2CBF]/15 blur-[70px]" />
-        <div className="relative grid gap-4 xl:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.5fr)_auto] xl:items-end">
-          <label className="block">
-            <span className="mb-2 block text-[9px] font-black tracking-[0.15em] text-[#c796ff] uppercase">
-              Search the live archive
-            </span>
-            <input
-              type="search"
-              value={query}
-              onChange={updateQuery}
-              autoComplete="off"
-              placeholder="Search Sodium, Create, Iris..."
-              className={voidClientStyles.input}
-            />
-          </label>
-          <div>
-            <span className="mb-2 block text-[9px] font-black tracking-[0.15em] text-[#c796ff] uppercase">
-              Content class
-            </span>
-            <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/[0.07] bg-black/25 p-1.5">
-              {KIND_OPTIONS.map((option) => (
-                <FilterButton
-                  key={option.id}
-                  active={kind === option.id}
-                  label={option.label}
-                  onClick={() => setKind(option.id)}
-                />
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!hasFilters}
-            className={`${voidClientStyles.secondaryButton} h-11 xl:min-w-32`}
-          >
-            <ShadowGlyph name="sliders" size={15} />
-            Reset filters
-          </button>
-        </div>
-        <div className="relative mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <ArchiveSelect
-            id="archive-source"
-            label="Source"
-            value={source}
-            onChange={(event) => setSource(event.target.value as SourceFilter)}
-          >
-            {SOURCE_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </ArchiveSelect>
-          <ArchiveSelect
-            id="archive-sort"
-            label="Sort by"
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as SortOption)}
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </ArchiveSelect>
-          <ArchiveSelect
-            id="archive-version"
-            label="Game version"
-            value={gameVersion}
-            onChange={(event) =>
-              setGameVersion(event.target.value as typeof gameVersion)
-            }
-          >
-            {GAME_VERSION_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option === "all" ? "All versions" : option}
-              </option>
-            ))}
-          </ArchiveSelect>
-          <ArchiveSelect
-            id="archive-loader"
-            label="Loader"
-            value={loader}
-            onChange={(event) => setLoader(event.target.value as typeof loader)}
-          >
-            {LOADER_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option === "all" ? "All loaders" : option}
-              </option>
-            ))}
-          </ArchiveSelect>
-        </div>
-        <div className="relative mt-4 flex items-center gap-3 overflow-x-auto pb-1">
-          {SOURCE_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={source === option.id}
-              onClick={() => setSource(option.id)}
-              className={`shrink-0 rounded-xl border px-3.5 py-2.5 text-left transition ${voidClientStyles.focusRing} ${source === option.id ? "border-[#a855f7]/38 bg-[#7B2CBF]/18 text-white" : "border-white/[0.065] bg-white/[0.025] text-[#8d8198] hover:border-white/[0.13] hover:text-white"}`}
-            >
-              <strong className="block text-[10px]">{option.label}</strong>
-              <small className="mt-0.5 block text-[8px] text-[#655a70]">
-                {option.detail}
-              </small>
-            </button>
-          ))}
-        </div>
-        {categoryOptions.length > 1 && (
-          <div className="relative mt-3 flex items-center gap-2 overflow-x-auto">
-            <span className="shrink-0 text-[8px] font-black tracking-[0.12em] text-[#8f78a1] uppercase">
-              Category
-            </span>
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className={`${voidClientStyles.input} h-9 min-w-40 py-1 text-[10px]`}
-            >
-              {categoryOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option === "all" ? "All categories" : option}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </section>
-
-      {warning && (
-        <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-4 py-3 text-xs leading-5 text-amber-100">
-          {warning}
-        </div>
-      )}
-      {search.error && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-400/25 bg-red-400/[0.07] px-4 py-3 text-xs leading-5 text-red-200">
-          <span>Live search failed: {String(search.error)}</span>
-          {source === "curseforge" && (
-            <button
-              type="button"
-              onClick={() => setKeyPanelOpen(true)}
-              className={`${voidClientStyles.secondaryButton} min-h-10 border-red-300/25 text-red-100`}
-            >
-              Replace CurseForge key
-            </button>
-          )}
-        </div>
-      )}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <p
-          aria-live="polite"
-          className="text-[10px] font-bold tracking-[0.08em] text-[#776c82] uppercase"
-        >
-          Showing {visibleItems.length.toLocaleString()} loaded of{" "}
-          {total.toLocaleString()} matching {kind}s
-        </p>
-        <div className="hidden h-px flex-1 bg-[linear-gradient(90deg,rgba(123,44,191,0.18),transparent)] sm:block" />
-      </div>
-
-      <div className="min-h-[360px]">
-        {search.isPending && visibleItems.length === 0 ? <LoadingGrid /> : null}
-        <motion.div
-          layout
-          className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3"
-        >
-          <AnimatePresence initial={false} mode="popLayout">
-            {visibleItems.map((item, index) => (
-              <LiveProjectCard
-                key={`${item.platform}:${item.id}`}
-                item={item}
-                index={index}
-                installState={getInstallState(`${item.platform}:${item.id}`)}
-                onInstall={() => openTargetSelector(item)}
-                onOpen={() => openProject(item)}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
-        {!search.isPending && visibleItems.length === 0 && (
-          <EmptyState onReset={clearFilters} />
-        )}
-      </div>
-      {search.hasNextPage && (
-        <div className="mt-7 flex justify-center">
-          <button
-            type="button"
-            onClick={() => void search.fetchNextPage()}
-            disabled={search.isFetchingNextPage}
-            className={`${voidClientStyles.primaryButton} min-w-52`}
-          >
-            {search.isFetchingNextPage
-              ? "Loading more projects..."
-              : `Load more (${Math.max(0, total - allItems.length).toLocaleString()} remaining)`}
-          </button>
-        </div>
-      )}
-      <AnimatePresence>
-        {targetProject && (
-          <TargetInstanceModal
-            project={targetProject}
-            instances={instancesQuery.data ?? []}
-            selectedInstanceId={targetInstanceId}
-            onSelect={setTargetInstanceId}
-            onClose={closeTargetSelector}
-            onInstall={confirmInstall}
-            onOpenProject={() => openProject(targetProject)}
-            onAutoTune={() => {
-              const selected = instancesQuery.data?.find(
-                (item) => item.id === targetInstanceId,
-              );
-              if (selected) setAutoTuneInstance(selected);
-            }}
-            pending={installProject.isPending}
-            success={installProject.isSuccess}
-            error={installProject.error ? String(installProject.error) : null}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {autoTuneInstance && (
-          <AutoTuneModal
-            instance={autoTuneInstance}
-            onClose={() => setAutoTuneInstance(null)}
-          />
-        )}
-      </AnimatePresence>
-      <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.055] pt-5 text-[9px] tracking-[0.08em] text-[#5f5469] uppercase">
-        <span>API keys stay in the native launcher</span>
-        <span className="flex items-center gap-2 text-[#7f6b90]">
-          <span className="size-1.5 rounded-full bg-[#8f55c5] shadow-[0_0_10px_rgba(143,85,197,0.65)]" />
-          Live search
-        </span>
-      </footer>
-    </div>
-  );
-}
-
-function TargetInstanceModal({
-  project,
-  instances,
-  selectedInstanceId,
-  onSelect,
-  onClose,
-  onInstall,
-  onOpenProject,
-  onAutoTune,
-  pending,
-  success,
-  error,
-}: {
-  project: ModSummary;
-  instances: Instance[];
-  selectedInstanceId: string;
-  onSelect: (value: string) => void;
-  onClose: () => void;
-  onInstall: () => void;
-  onOpenProject: () => void;
-  onAutoTune: () => void;
-  pending: boolean;
-  success: boolean;
-  error: string | null;
-}) {
-  const reducedMotion = useReducedMotion();
-  const isModpack = project.projectType === "modpack";
-  return (
-    <motion.div
-      className="fixed inset-0 z-[440] grid place-items-center bg-black/75 p-5 backdrop-blur-xl"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onMouseDown={pending ? undefined : onClose}
-    >
-      <motion.section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="target-instance-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        initial={
-          reducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.97 }
+    mutationFn: async ({ project, instanceId, createSpec, newProfileName }: { project: ModSummary; instanceId: string; createSpec?: CreateInstanceSpec; newProfileName: string }) => {
+      let resolvedId = instanceId;
+      let created: Instance | undefined;
+      if (!resolvedId) {
+        if (project.projectType === "modpack") {
+          const provisioned = await provisionModpackWithNotification(project.platform, project.id, newProfileName);
+          return { result: provisioned, created: provisioned.instance, instanceId: provisioned.instance.id };
         }
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 8, scale: 0.985 }}
-        className="w-full max-w-xl border border-[#9d5ce0]/34 bg-[#0F0B15]/98 p-6 shadow-[0_38px_120px_rgba(0,0,0,.9),0_0_65px_rgba(123,44,191,.2)] [clip-path:polygon(0_0,95%_0,100%_9%,100%_100%,5%_100%,0_91%)]"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <span className="grid size-12 place-items-center border border-[#9d5ce0]/28 bg-[#7B2CBF]/12 text-[#d8b4fe]">
-            <ShadowGlyph
-              name={project.projectType === "shader" ? "spark" : "mods"}
-              size={23}
-            />
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={pending}
-            aria-label="Close target selector"
-            className={`grid size-11 cursor-pointer place-items-center text-[#95899f] transition hover:bg-white/[0.05] hover:text-white disabled:opacity-35 ${voidClientStyles.focusRing}`}
-          >
-            <ShadowGlyph name="close" size={15} />
-          </button>
-        </div>
-        <p className="mt-5 text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">
-          Select Target Instance
-        </p>
-        <h2
-          id="target-instance-title"
-          className="font-display mt-2 text-xl font-black"
-        >
-          {project.name}
-        </h2>
-        <p className="mt-2 text-xs leading-5 text-[#a79bad]">
-          {isModpack
-            ? "Full modpack manifest import is not silently simulated. Open the source page, then use Auto-Tune on the local profile after import support is available."
-            : `The ${project.projectType} will be downloaded, verified, and placed in the selected profile's ${project.projectType === "shader" ? "shaderpacks" : "mods"} folder.`}
-        </p>
-        <label htmlFor="target-instance" className="mt-5 block">
-          <span className="mb-2 block text-[9px] font-black tracking-[0.13em] text-[#b99cc9] uppercase">
-            Local profile
-          </span>
-          <select
-            id="target-instance"
-            value={selectedInstanceId}
-            onChange={(event) => onSelect(event.target.value)}
-            disabled={pending || instances.length === 0}
-            className={`${voidClientStyles.input} cursor-pointer appearance-none`}
-          >
-            {instances.length === 0 ? (
-              <option value="">No local instances</option>
-            ) : (
-              instances.map((instance) => (
-                <option key={instance.id} value={instance.id}>
-                  {instance.name} · {instance.gameVersion} · {instance.loader}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
-        {error && (
-          <p
-            role="alert"
-            className="mt-3 border border-red-400/20 bg-red-400/[0.05] px-3 py-2 text-[10px] leading-4 text-red-200"
-          >
-            {error}
-          </p>
-        )}
-        {success && (
-          <div
-            role="status"
-            className="mt-3 border border-[#72f2a8]/18 bg-[#72f2a8]/[0.04] px-3 py-2 text-[10px] text-[#72f2a8]"
-          >
-            Installed and verified in the selected instance.
-          </div>
-        )}
-        <div
-          className={`mt-5 grid gap-2 ${isModpack ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={pending}
-            className={voidClientStyles.secondaryButton}
-          >
-            Cancel
-          </button>
-          {isModpack ? (
-            <>
-              <button
-                type="button"
-                onClick={onOpenProject}
-                className={voidClientStyles.secondaryButton}
-              >
-                <ShadowGlyph name="external" size={15} />
-                Source Page
-              </button>
-              <button
-                type="button"
-                onClick={onAutoTune}
-                disabled={!selectedInstanceId || instances.length === 0}
-                className={voidClientStyles.primaryButton}
-              >
-                <ShadowGlyph name="telemetry" size={15} />
-                Auto-Tune Profile
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={success ? onAutoTune : onInstall}
-              disabled={
-                !selectedInstanceId || pending || instances.length === 0
-              }
-              className={voidClientStyles.primaryButton}
-            >
-              <ShadowGlyph
-                name={success ? "telemetry" : pending ? "spark" : "download"}
-                size={15}
-              />
-              {success
-                ? "Auto-Tune Target"
-                : pending
-                  ? "Installing…"
-                  : `Install ${project.projectType}`}
-            </button>
-          )}
-        </div>
-      </motion.section>
-    </motion.div>
-  );
+        if (!createSpec) throw new Error("Choose a version, loader and profile name.");
+        created = await api.createInstance(createSpec);
+        resolvedId = created.id;
+      }
+      const result = project.projectType === "modpack"
+        ? await installModpackWithNotification(resolvedId, project.platform, project.id)
+        : project.projectType === "shader"
+          ? await installShaderWithNotification(resolvedId, project.platform, project.id)
+          : await installModWithNotification(resolvedId, project.platform, project.id);
+      return { result, created, instanceId: resolvedId };
+    },
+    onMutate: ({ project }) => setInstallStates((current) => ({ ...current, [`${project.platform}:${project.id}`]: { phase: "installing", progress: 0 } })),
+    onSuccess: async ({ instanceId }, { project }) => { setInstallStates((current) => ({ ...current, [`${project.platform}:${project.id}`]: { phase: "installed", progress: 100 } })); setTargetInstanceId(instanceId); setActiveInstanceId(instanceId); await queryClient.invalidateQueries({ queryKey: ["instances"] }); },
+    onError: (_error, { project }) => setInstallStates((current) => ({ ...current, [`${project.platform}:${project.id}`]: { phase: "idle", progress: 0 } })),
+  });
+
+  const clearFilters = useCallback(() => { setSource("all"); setCatalogKind("mod"); setSort("relevance"); setGameVersion("all"); setLoader("all"); setQuery(""); }, [setCatalogKind]);
+  const openProject = useCallback((project: ModSummary) => {
+    if (!/^https:\/\/(www\.)?(modrinth\.com|curseforge\.com)\//.test(project.pageUrl)) return;
+    if (isTauri()) {
+      void openUrl(project.pageUrl);
+      return;
+    }
+    window.open(project.pageUrl, "_blank", "noopener,noreferrer");
+  }, []);
+  const openTargetSelector = useCallback((project: ModSummary) => {
+    setTargetProject(project);
+    // A modpack is a complete runtime definition. Default to provisioning a
+    // fresh profile from its manifest instead of silently modifying the first
+    // existing instance. Mods and shaders still default to the first profile
+    // because they need a user-selected Minecraft runtime.
+    const validActiveInstanceId = instancesQuery.data?.some((instance) => instance.id === activeInstanceId) ? activeInstanceId : null;
+    setTargetInstanceId(project.projectType === "modpack" ? "" : (validActiveInstanceId ?? instancesQuery.data?.[0]?.id ?? ""));
+    const version = gameVersion === "all" ? "1.21.1" : gameVersion;
+    setNewInstanceVersion(version);
+    setNewInstanceLoader(loader === "all" ? "fabric" : loader);
+    setNewInstanceName(`${project.name} ${version}`.slice(0, 48));
+    installProject.reset();
+  }, [activeInstanceId, gameVersion, installProject, instancesQuery.data, loader]);
+  const confirmInstall = useCallback(() => { if (!targetProject || installProject.isPending) return; installProject.mutate({ project: targetProject, instanceId: targetInstanceId, newProfileName: newInstanceName.trim(), createSpec: targetInstanceId || targetProject.projectType === "modpack" ? undefined : { name: newInstanceName.trim(), gameVersion: newInstanceVersion, loader: newInstanceLoader } }); }, [installProject, newInstanceLoader, newInstanceName, newInstanceVersion, targetInstanceId, targetProject]);
+  const resetKeyMutation = useCallback(() => { saveKey.reset(); setKeyOpen((open) => !open); }, [saveKey]);
+  const hasNextPage = Boolean(searchQuery.data && (page + 1) * PAGE_SIZE < searchQuery.data.total);
+  const hasPreviousPage = page > 0;
+
+  return <div className={voidClientStyles.page}>
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className={voidClientStyles.sectionKicker}>Content library</p><h1 className={`${voidClientStyles.pageTitle} mt-1`}>Mods and modpacks</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[#92929B]">Search the live Modrinth and CurseForge catalogs. Results are paged so the window stays compact.</p></div><button type="button" onClick={resetKeyMutation} aria-expanded={keyOpen} className={voidClientStyles.secondaryButton}><ShadowGlyph name="shield" size={15} />CurseForge key <span className={`size-2 rounded-full ${settingsQuery.data?.curseforgeConfigured ? "bg-[#4ADE80]" : "bg-[#F59E0B]"}`} /></button></header>
+    {keyOpen && <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (curseforgeKey.trim()) saveKey.mutate(curseforgeKey.trim()); }} className={`${voidClientStyles.flatPanel} mb-4 grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto] md:items-end`}><div><h2 className="text-sm font-semibold text-[#F5F5F5]">CurseForge API access</h2><p className="mt-1 text-xs leading-5 text-[#A3A3A3]">The key is encrypted by the native launcher and never returned to this interface.</p></div><label><span className="mb-1 block text-xs text-[#A3A3A3]">New Core API key</span><input type="password" value={curseforgeKey} onChange={(event) => setCurseforgeKey(event.target.value.slice(0, 512))} autoComplete="off" className={voidClientStyles.input} /></label><div className="flex gap-2"><button type="submit" disabled={!curseforgeKey.trim() || saveKey.isPending} className={voidClientStyles.primaryButton}>Save</button>{settingsQuery.data?.curseforgeConfigured && <button type="button" onClick={() => saveKey.mutate(null)} disabled={saveKey.isPending} className={voidClientStyles.secondaryButton}>Remove</button>}</div>{saveKey.isError && <p role="alert" className="text-xs text-[#FCA5A5] md:col-span-3">{String(saveKey.error)}</p>}</form>}
+    <section className={`${voidClientStyles.flatPanel} mb-4 p-4`} aria-label="Archive filters"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_repeat(5,minmax(120px,0.5fr))_auto]"><label><span className="mb-1.5 block text-xs font-medium text-[#A1A1AA]">Search</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Sodium, Iris, Create…" className={voidClientStyles.input} /></label><FilterSelect label="Type" value={kind} onChange={(value) => setCatalogKind(value as ProjectType)} options={PROJECT_TYPES.map((entry) => ({ value: entry.id, label: entry.label }))} /><FilterSelect label="Source" value={source} onChange={(value) => setSource(value as SourceFilter)} options={[{ value: "all", label: "All sources" }, { value: "modrinth", label: "Modrinth" }, { value: "curseforge", label: "CurseForge" }]} /><FilterSelect label="Version" value={gameVersion} onChange={(value) => setGameVersion(value as typeof gameVersion)} options={GAME_VERSIONS.map((value) => ({ value, label: value === "all" ? "All versions" : value }))} /><FilterSelect label="Loader" value={loader} onChange={(value) => setLoader(value as typeof loader)} options={LOADERS.map((value) => ({ value, label: value === "all" ? "All loaders" : value }))} /><FilterSelect label="Sort" value={sort} onChange={(value) => setSort(value as SearchSort)} options={SORTS.map((entry) => ({ value: entry.id, label: entry.label }))} /><button type="button" onClick={clearFilters} className={`${voidClientStyles.secondaryButton} self-end`}>Reset</button></div></section>
+    {searchQuery.data?.warning && <p role="status" className="mb-4 rounded-lg border border-[#59411F] bg-[#2A2112] px-4 py-3 text-sm text-[#FCD34D]">{searchQuery.data.warning}</p>}
+    {searchQuery.error && <p role="alert" className="mb-4 rounded-lg border border-[#5C2525] bg-[#2A1515] px-4 py-3 text-sm text-[#FCA5A5]">Live search failed: {String(searchQuery.error)}</p>}
+    {!isTauri() && <p role="status" className="mb-4 rounded-lg border border-[#29292F] bg-[#151518] px-4 py-3 text-sm text-[#D4D4D8]">Live catalog search is available in the packaged native launcher.</p>}
+    <div className="mb-3 flex items-center justify-between gap-3 text-xs text-[#92929B]"><span>{searchQuery.data ? `Page ${page + 1} · ${searchQuery.data.total.toLocaleString()} matching projects` : "No catalog response yet"}</span><span className={voidClientStyles.tag}>{searchQuery.isFetching ? "Loading…" : "Live API"}</span></div>
+    <div className="grid max-h-[calc(100vh-390px)] min-h-[320px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">{searchQuery.data?.items.map((project) => <ProjectCard key={`${project.platform}:${project.id}`} project={project} installState={installStates[`${project.platform}:${project.id}`] ?? { phase: "idle", progress: 0 }} onInstall={() => openTargetSelector(project)} onOpen={() => openProject(project)} />)}</div>
+    {searchQuery.data && searchQuery.data.items.length === 0 && <div className="mt-3 rounded-xl border border-[#29292F] bg-[#151518] px-4 py-10 text-center"><span className="mx-auto grid size-11 place-items-center rounded-lg bg-[#21152B] text-[#C084FC]"><ShadowGlyph name="mods" size={18} /></span><p className="mt-3 text-sm font-semibold text-[#F4F4F5]">No projects found</p><p className="mt-1 text-xs text-[#92929B]">Change the filters or clear the search.</p></div>}
+    <nav className="mt-4 flex items-center justify-between gap-3 border-t border-[#29292F] pt-4" aria-label="Catalog pages"><button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={!hasPreviousPage || searchQuery.isFetching} className={voidClientStyles.secondaryButton}>Previous</button><span className="font-mono text-xs tabular-nums text-[#92929B]">Page {page + 1}</span><button type="button" onClick={() => setPage((value) => value + 1)} disabled={!hasNextPage || searchQuery.isFetching} className={voidClientStyles.primaryButton}>Next</button></nav>
+    {targetProject && <TargetModal project={targetProject} instances={instancesQuery.data ?? []} selectedInstanceId={targetInstanceId} newInstanceName={newInstanceName} newInstanceVersion={newInstanceVersion} newInstanceLoader={newInstanceLoader} pending={installProject.isPending} success={installStates[`${targetProject.platform}:${targetProject.id}`]?.phase === "installed"} error={installProject.error ? String(installProject.error) : null} onSelect={setTargetInstanceId} onNewInstanceName={setNewInstanceName} onNewInstanceVersion={setNewInstanceVersion} onNewInstanceLoader={setNewInstanceLoader} onInstall={confirmInstall} onClose={() => { if (!installProject.isPending) setTargetProject(null); }} onOpen={() => openProject(targetProject)} />}
+  </div>;
 }
 
-function FilterButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`cursor-pointer rounded-lg px-3 py-2 text-[10px] font-black transition ${voidClientStyles.focusRing} ${active ? "bg-[#7B2CBF]/24 text-white shadow-[0_0_18px_rgba(123,44,191,0.14)]" : "text-[#776c82] hover:bg-white/[0.035] hover:text-[#c4b8ce]"}`}
-    >
-      {label}
-    </button>
-  );
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: readonly { value: string; label: string }[] }) {
+  return <label><span className="mb-1.5 block text-xs font-medium text-[#A1A1AA]">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className={`${voidClientStyles.input} cursor-pointer`}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
 }
 
-function ArchiveSelect({
-  id,
-  label,
-  value,
-  onChange,
-  children,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <label htmlFor={id}>
-      <span className="mb-1.5 block text-[8px] font-black tracking-[0.14em] text-[#8f78a1] uppercase">
-        {label}
-      </span>
-      <select
-        id={id}
-        value={value}
-        onChange={onChange}
-        className={`${voidClientStyles.input} cursor-pointer appearance-none`}
-      >
-        {children}
-      </select>
-    </label>
-  );
+function ProjectCard({ project, installState, onInstall, onOpen }: { project: ModSummary; installState: IInstallState; onInstall: () => void; onOpen: () => void }) {
+  return <article className="group flex min-h-56 flex-col rounded-xl border border-[#29292F] bg-[#151518] p-4 transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-[#46464F] hover:bg-[#18181C]"><div className="flex items-start gap-3"><img src={project.iconUrl ?? "/void-shadow-blade-app-icon.png"} alt="" width={48} height={48} loading="lazy" className="size-12 rounded-lg border border-[#34343A] bg-[#111114] object-cover" /><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold text-[#F4F4F5]">{project.name}</h2><p className="mt-1 text-[11px] text-[#85858E]">{project.platform === "modrinth" ? "Modrinth" : "CurseForge"} · {project.projectType}</p></div><span className="rounded-md border border-[#34343A] bg-[#1A1A1F] px-2 py-1 text-[10px] font-medium uppercase text-[#A1A1AA]">{project.projectType}</span></div><p className="mt-3 line-clamp-3 text-xs leading-5 text-[#92929B]">{project.summary || "No summary returned by the source."}</p><div className="mt-auto flex items-center gap-2 pt-4"><button type="button" onClick={onOpen} className={voidClientStyles.secondaryButton}>Details</button><button type="button" onClick={onInstall} disabled={installState.phase === "installing"} className={`${voidClientStyles.primaryButton} flex-1`}>{installState.phase === "installed" ? "Installed" : installState.phase === "installing" ? "Installing…" : `Install ${project.projectType}`}</button></div></article>;
 }
 
-function LoadingGrid() {
-  return (
-    <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3" role="status" aria-live="polite">
-      <div className="col-span-full flex items-center gap-3 rounded-2xl border border-[#7B2CBF]/20 bg-[#7B2CBF]/[0.06] px-4 py-3 text-sm text-[#cbbbd3]">
-        <span className="size-2 animate-pulse rounded-full bg-[#c084fc] shadow-[0_0_12px_rgba(192,132,252,0.85)]" />
-        Loading projects from the selected catalog…
-      </div>
-      {Array.from({ length: 6 }, (_, index) => (
-        <div
-          key={index}
-          className="h-80 animate-pulse rounded-[24px] border border-white/[0.06] bg-[linear-gradient(135deg,rgba(255,255,255,0.045),rgba(123,44,191,0.035),rgba(255,255,255,0.018))]"
-        />
-      ))}
-    </div>
-  );
+function TargetModal({ project, instances, selectedInstanceId, newInstanceName, newInstanceVersion, newInstanceLoader, pending, success, error, onSelect, onNewInstanceName, onNewInstanceVersion, onNewInstanceLoader, onInstall, onClose, onOpen }: { project: ModSummary; instances: Instance[]; selectedInstanceId: string; newInstanceName: string; newInstanceVersion: string; newInstanceLoader: InstanceLoader; pending: boolean; success: boolean; error: string | null; onSelect: (value: string) => void; onNewInstanceName: (value: string) => void; onNewInstanceVersion: (value: string) => void; onNewInstanceLoader: (value: InstanceLoader) => void; onInstall: () => void; onClose: () => void; onOpen: () => void }) {
+  const createsModpackProfile = project.projectType === "modpack" && !selectedInstanceId;
+  return <div className="fixed inset-0 z-[440] grid place-items-center bg-[#111111] p-4" role="presentation" onMouseDown={onClose}><section role="dialog" aria-modal="true" aria-labelledby="target-modal-title" onMouseDown={(event) => event.stopPropagation()} className="w-full max-w-xl rounded-sm border border-[#333333] bg-[#1A1A1A] p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-[#A3A3A3]">Install target</p><h2 id="target-modal-title" className="mt-1 text-lg font-semibold text-[#F5F5F5]">{project.name}</h2></div><button type="button" onClick={onClose} disabled={pending} aria-label="Close install target" className={voidClientStyles.iconButton}><ShadowGlyph name="close" size={15} /></button></div><p className="mt-3 text-sm leading-5 text-[#A3A3A3]">{project.projectType === "modpack" ? "Create a profile from the pack's exact Minecraft and loader versions, or import it into an existing compatible profile." : `The ${project.projectType} is downloaded and verified in the selected profile.`}</p><label className="mt-4 block"><span className="mb-1 block text-xs text-[#A3A3A3]">Install destination</span><select value={selectedInstanceId} onChange={(event) => onSelect(event.target.value)} disabled={pending} className={`${voidClientStyles.input} cursor-pointer`}><option value="">Create a new profile</option>{instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name} · {instance.gameVersion} · {instance.loader}</option>)}</select></label>{!selectedInstanceId && <fieldset className="mt-4 grid gap-3 rounded-sm border border-[#333333] bg-[#111111] p-3 sm:grid-cols-3"><legend className="px-1 text-xs font-semibold text-[#D4D4D4]">New profile</legend><label className="sm:col-span-3"><span className="mb-1 block text-xs text-[#A3A3A3]">Name</span><input value={newInstanceName} onChange={(event) => onNewInstanceName(event.target.value.slice(0, 48))} className={voidClientStyles.input} minLength={3} maxLength={48} /></label>{createsModpackProfile ? <p className="sm:col-span-3 text-xs leading-5 text-[#A3A3A3]">Minecraft, mod loader and loader build are detected from the downloaded manifest. A failed import removes the incomplete profile.</p> : <><FilterSelect label="Minecraft version" value={newInstanceVersion} onChange={onNewInstanceVersion} options={["1.21.1", "1.21", "1.20.6", "1.20.1", "1.19.4", "1.18.2"].map((value) => ({ value, label: value }))} /><FilterSelect label="Loader" value={newInstanceLoader} onChange={(value) => onNewInstanceLoader(value as InstanceLoader)} options={["fabric", "forge", "neoforge", "quilt", "vanilla"].map((value) => ({ value, label: value }))} /></>}</fieldset>}{error && <p role="alert" className="mt-3 border border-[#333333] bg-[#2A1515] px-3 py-2 text-xs text-[#FCA5A5]">{error}</p>}{success && <p role="status" className="mt-3 border border-[#333333] bg-[#14251B] px-3 py-2 text-xs text-[#86EFAC]">Installed and verified. The instance list has been refreshed.</p>}<div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" onClick={onClose} disabled={pending} className={voidClientStyles.secondaryButton}>Close</button><button type="button" onClick={onOpen} className={voidClientStyles.secondaryButton}><ShadowGlyph name="external" size={15} />Source page</button><button type="button" onClick={onInstall} disabled={pending || (!selectedInstanceId && newInstanceName.trim().length < 3)} className={voidClientStyles.primaryButton}>{pending ? "Installing…" : success ? "Installed" : selectedInstanceId ? `Install ${project.projectType}` : `Create & install ${project.projectType}`}</button></div></section></div>;
 }
 
-function EmptyState({ onReset }: { onReset: () => void }) {
-  return (
-    <section
-      className={`${voidClientStyles.glassCard} mt-5 grid min-h-72 place-items-center p-8 text-center`}
-    >
-      <div>
-        <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-[#7B2CBF]/25 bg-[#7B2CBF]/10 text-[#d8b4fe]">
-          <ShadowGlyph name="mods" size={27} />
-        </span>
-        <h2 className="font-display mt-5 text-lg font-black">
-          No projects found
-        </h2>
-        <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-[#8d8198]">
-          Try another search, source, version or loader. Your filters are sent
-          to the selected platform catalog.
-        </p>
-        <button
-          type="button"
-          onClick={onReset}
-          className={`${voidClientStyles.secondaryButton} mt-5`}
-        >
-          Reset filters
-        </button>
-      </div>
-    </section>
-  );
-}
-
-const ACCENTS: Record<
-  ProjectType,
-  { canvas: string; line: string; badge: string; icon: string }
-> = {
-  mod: {
-    canvas:
-      "bg-[radial-gradient(circle_at_72%_20%,rgba(168,85,247,0.42),transparent_38%),linear-gradient(135deg,#150b20,#08060d_72%)]",
-    line: "border-[#b36dff]/35",
-    badge: "border-[#b36dff]/30 bg-[#7B2CBF]/14 text-[#d8b4fe]",
-    icon: "text-[#d8b4fe]",
-  },
-  modpack: {
-    canvas:
-      "bg-[radial-gradient(circle_at_72%_20%,rgba(58,112,255,0.38),transparent_38%),linear-gradient(135deg,#090f24,#07070d_72%)]",
-    line: "border-[#678bff]/32",
-    badge: "border-[#678bff]/28 bg-[#315be8]/12 text-[#a9c0ff]",
-    icon: "text-[#a9c0ff]",
-  },
-  shader: {
-    canvas:
-      "bg-[radial-gradient(circle_at_72%_20%,rgba(245,158,11,0.3),transparent_38%),linear-gradient(135deg,#211307,#080706_72%)]",
-    line: "border-amber-300/28",
-    badge: "border-amber-300/24 bg-amber-300/[0.08] text-amber-200",
-    icon: "text-amber-200",
-  },
-};
-
-function LiveProjectCard({
-  item,
-  index,
-  installState,
-  onInstall,
-  onOpen,
-}: {
-  item: ModSummary;
-  index: number;
-  installState: IInstallState;
-  onInstall: () => void;
-  onOpen: () => void;
-}) {
-  const reducedMotion = useReducedMotion();
-  const accent = ACCENTS[item.projectType];
-  const isInstalling = installState.phase === "installing";
-  const isInstalled = installState.phase === "installed";
-  return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 18, scale: 0.975 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{
-        duration: 0.3,
-        delay: reducedMotion ? 0 : Math.min(index, 12) * 0.025,
-      }}
-      whileHover={reducedMotion ? undefined : { y: -5 }}
-      className={`group relative overflow-hidden rounded-[24px] border bg-[linear-gradient(150deg,rgba(20,15,27,0.96),rgba(8,6,11,0.92))] shadow-[inset_0_1px_0_rgba(255,255,255,0.055),0_22px_60px_rgba(0,0,0,0.36)] backdrop-blur-2xl ${accent.line}`}
-    >
-      <div className={`relative h-40 overflow-hidden ${accent.canvas}`}>
-        {item.iconUrl ? (
-          <img
-            src={item.iconUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            onError={(event) => { event.currentTarget.style.display = "none"; }}
-            className="absolute inset-0 h-full w-full object-cover opacity-45 saturate-75 transition duration-700 group-hover:scale-[1.07] group-hover:opacity-65"
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(255,255,255,0.14),transparent_32%)]" />
-        )}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_34%,rgba(5,5,5,0.8)_100%)]" />
-        <div className="absolute inset-x-0 top-0 flex items-start justify-between p-4">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[8px] font-black tracking-[0.12em] uppercase backdrop-blur-xl ${accent.badge}`}
-          >
-            <ShadowGlyph
-              name={item.projectType === "shader" ? "spark" : "mods"}
-              size={12}
-            />
-            {item.projectType}
-          </span>
-          <span className="rounded-lg border border-white/[0.09] bg-black/35 px-2.5 py-1.5 text-[8px] font-black tracking-[0.1em] text-[#b9adbf] uppercase backdrop-blur-xl">
-            {item.platform}
-          </span>
-        </div>
-        <div
-          className={`absolute bottom-4 left-4 grid size-12 place-items-center rounded-2xl border bg-black/35 backdrop-blur-xl ${accent.line} ${accent.icon}`}
-        >
-          <ShadowGlyph
-            name={item.projectType === "shader" ? "spark" : "mods"}
-            size={24}
-            className="filter drop-shadow-[0_0_10px_currentColor]"
-          />
-        </div>
-        <span className="absolute right-4 bottom-4 text-[9px] font-bold tracking-[0.08em] text-white/70 uppercase">
-          {formatDownloads(item.downloads)} downloads
-        </span>
-      </div>
-      <div className="p-5">
-        <div className="min-h-18">
-          <p className="text-[9px] font-black tracking-[0.13em] text-[#765d8b] uppercase">
-            By {item.author || "community author"}
-          </p>
-          <h2 className="font-display mt-1.5 line-clamp-2 text-base leading-5 font-black text-white transition group-hover:text-[#e7d5ff]">
-            {item.name}
-          </h2>
-        </div>
-        <p className="mt-3 line-clamp-3 min-h-15 text-[11px] leading-5 text-[#8d8198]">
-          {item.summary ||
-            "Community project indexed from the live platform catalog."}
-        </p>
-        <div className="mt-4 flex min-h-6 flex-wrap gap-2">
-          {item.categories.slice(0, 3).map((value) => (
-            <span key={value} className={voidClientStyles.tag}>
-              {value}
-            </span>
-          ))}
-        </div>
-        <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
-          <motion.button
-            layout
-            type="button"
-            disabled={isInstalling || isInstalled}
-            onClick={onInstall}
-            whileHover={
-              !isInstalling && !isInstalled && !reducedMotion
-                ? { scale: 1.018 }
-                : undefined
-            }
-            whileTap={
-              !isInstalling && !isInstalled && !reducedMotion
-                ? { scale: 0.985 }
-                : undefined
-            }
-            className={`relative flex h-11 cursor-pointer items-center justify-center overflow-hidden rounded-xl border text-[10px] font-black tracking-[0.1em] uppercase transition ${voidClientStyles.focusRing} ${isInstalled ? "border-[#4cff9a]/24 bg-[#00e676]/[0.075] text-[#68ffa6]" : isInstalling ? "cursor-wait border-[#a855f7]/38 bg-[#160b20] text-white" : "border-[#a855f7]/32 bg-[linear-gradient(105deg,rgba(50,16,75,0.92),rgba(123,44,191,0.82),rgba(34,54,122,0.78))] text-white shadow-[0_0_24px_rgba(123,44,191,0.2)]"}`}
-          >
-            {isInstalling && (
-              <motion.span
-                className="absolute inset-0 origin-left bg-[#9d4edd]/80"
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: installState.progress / 100 }}
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-2">
-              <ShadowGlyph
-                name={
-                  isInstalled ? "check" : isInstalling ? "spark" : "download"
-                }
-                size={15}
-              />
-              {isInstalled
-                ? "Installed"
-                : isInstalling
-                  ? `Installing ${installState.progress}%`
-                  : "Prepare"}
-            </span>
-          </motion.button>
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label={`Open ${item.name} project page`}
-            className={`${voidClientStyles.secondaryButton} h-11 px-3`}
-          >
-            <ShadowGlyph name="external" size={15} />
-          </button>
-        </div>
-      </div>
-    </motion.article>
-  );
-}
-
-function formatDownloads(value: number) {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}b`;
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return value.toString();
-}
+export default ModHubView;

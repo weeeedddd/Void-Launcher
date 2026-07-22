@@ -1,236 +1,99 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isTauri } from "@tauri-apps/api/core";
 import { api } from "@/lib/api";
-import { MINECRAFT_VERSION_GROUPS, INSTANCE_LOADERS, type IMinecraftVersionGroup } from "@/data/minecraftVersions";
+import { buildMinecraftVersionGroups, INSTANCE_LOADERS, MINECRAFT_VERSION_GROUPS } from "@/data/minecraftVersions";
 import type { Instance, InstanceLoader } from "@/types";
 import { ShadowGlyph } from "../../../components/ShadowGlyph";
-import { AutoTuneModal } from "./AutoTuneModal";
 import { useLauncherInstance } from "../../../hooks/useLauncherInstance";
+import { publishLauncherNotification } from "../../../notifications/notificationStore";
 import { useVoidClientStore } from "../../../stores/voidClient.store";
 import { voidClientStyles } from "../void-client.styles";
 
-const PERFORMANCE_MODS = [
-  { id: "YL57xq9U", name: "Iris Shaders" },
-  { id: "AANobbMI", name: "Sodium" },
-  { id: "Bh37bMuy", name: "Reese's Sodium Options" },
-  { id: "gvQqBUqZ", name: "Lithium" },
-  { id: "w7ThoJFB", name: "Zoomify" },
-] as const;
+const PERFORMANCE_MODS = [{ id: "YL57xq9U", name: "Iris Shaders" }, { id: "AANobbMI", name: "Sodium" }, { id: "Bh37bMuy", name: "Reese's Sodium Options" }, { id: "gvQqBUqZ", name: "Lithium" }, { id: "w7ThoJFB", name: "Zoomify" }] as const;
 
 export function DeploymentVaultView() {
   const [selectedMajor, setSelectedMajor] = useState(MINECRAFT_VERSION_GROUPS[0].major);
   const [selectedVersion, setSelectedVersion] = useState(MINECRAFT_VERSION_GROUPS[0].versions[0]);
   const [selectedLoader, setSelectedLoader] = useState<InstanceLoader>("fabric");
-  const [instanceName, setInstanceName] = useState("Void Tricky Trials");
+  const [instanceName, setInstanceName] = useState("Void Chaos Cubed");
   const [versionQuery, setVersionQuery] = useState("");
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
-  const [enabledPerformanceMods, setEnabledPerformanceMods] = useState<string[]>(PERFORMANCE_MODS.map((item) => item.id));
-  const [autoTuneOpen, setAutoTuneOpen] = useState(false);
-  const reducedMotion = useReducedMotion();
+  const [enabledMods, setEnabledMods] = useState<string[]>(PERFORMANCE_MODS.map((item) => item.id));
   const queryClient = useQueryClient();
+  const nativeRuntime = isTauri();
+  const versionCatalogQuery = useQuery({
+    queryKey: ["minecraft-version-catalog"],
+    queryFn: api.getMinecraftVersionCatalog,
+    enabled: nativeRuntime,
+    retry: 1,
+    staleTime: 30 * 60 * 1_000,
+  });
+  const versionGroups = useMemo(() => {
+    if (!versionCatalogQuery.data) return MINECRAFT_VERSION_GROUPS;
+    const remoteGroups = buildMinecraftVersionGroups(versionCatalogQuery.data);
+    return remoteGroups.length > 0 ? remoteGroups : MINECRAFT_VERSION_GROUPS;
+  }, [versionCatalogQuery.data]);
   const setActiveView = useVoidClientStore((state) => state.setActiveView);
-  const { profile, instance, instances, isLoadingInstances, launchMutation } = useLauncherInstance(selectedInstanceId);
-
-  const selectedGroup = MINECRAFT_VERSION_GROUPS.find((group) => group.major === selectedMajor) ?? MINECRAFT_VERSION_GROUPS[0];
-  const visibleGroups = useMemo(() => {
-    const normalized = versionQuery.trim().toLocaleLowerCase();
-    if (!normalized) return MINECRAFT_VERSION_GROUPS;
-    return MINECRAFT_VERSION_GROUPS.filter((group) => [group.major, group.title, group.era].join(" ").toLocaleLowerCase().includes(normalized));
-  }, [versionQuery]);
+  const { profile, instance, instances, isLoadingInstances, launchMutation, setActiveInstanceId } = useLauncherInstance();
+  const selectedGroup = versionGroups.find((group) => group.major === selectedMajor) ?? versionGroups[0];
+  const visibleGroups = useMemo(() => { const needle = versionQuery.trim().toLowerCase(); return needle ? versionGroups.filter((group) => `${group.major} ${group.title} ${group.era} ${group.versions.join(" ")}`.toLowerCase().includes(needle)) : versionGroups; }, [versionGroups, versionQuery]);
 
   useEffect(() => {
-    if (!selectedInstanceId && instances[0]) setSelectedInstanceId(instances[0].id);
-  }, [instances, selectedInstanceId]);
+    if (versionGroups.some((group) => group.major === selectedMajor)) return;
+    const newest = versionGroups[0];
+    setSelectedMajor(newest.major);
+    setSelectedVersion(newest.versions[0]);
+    setInstanceName(`Void ${newest.title}`.slice(0, 48));
+  }, [selectedMajor, versionGroups]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const created = await api.createInstance({ name: instanceName.trim(), gameVersion: selectedVersion, loader: selectedLoader });
       const warnings: string[] = [];
       let installedCount = 0;
-      if (selectedLoader === "vanilla" && enabledPerformanceMods.length > 0) {
-        warnings.push("Performance mods were skipped because Vanilla does not load mod jars.");
-      } else {
-        for (const projectId of enabledPerformanceMods) {
-          try {
-            await api.installMod(created.id, "modrinth", projectId);
-            installedCount += 1;
-          } catch (error) {
-            const item = PERFORMANCE_MODS.find((candidate) => candidate.id === projectId);
-            warnings.push(`${item?.name ?? projectId}: ${error instanceof Error ? error.message : String(error)}`);
-          }
+      if (selectedLoader !== "vanilla") {
+        for (const project of PERFORMANCE_MODS.filter((item) => enabledMods.includes(item.id))) {
+          try { await api.installMod(created.id, "modrinth", project.id); installedCount += 1; } catch (error) { warnings.push(`${project.name}: ${error instanceof Error ? error.message : String(error)}`); }
         }
-      }
-      return { created, installedCount, warnings };
+      } else if (enabledMods.length > 0) warnings.push("Vanilla cannot load mod jars; performance mods were skipped.");
+      return { created, warnings, installedCount };
     },
-    onSuccess: ({ created }) => {
-      queryClient.setQueryData<Instance[]>(["instances"], (current = []) => [created, ...current.filter((candidate) => candidate.id !== created.id)]);
-      setSelectedInstanceId(created.id);
+    onSuccess: ({ created, installedCount, warnings }) => {
+      queryClient.setQueryData<Instance[]>(["instances"], (current = []) => [created, ...current.filter((entry) => entry.id !== created.id)]);
+      setActiveInstanceId(created.id);
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
+      publishLauncherNotification({
+        title: "Instance created",
+        message: warnings.length > 0
+          ? `${created.name} is ready with ${installedCount} performance mods and ${warnings.length} reported warning${warnings.length === 1 ? "" : "s"}.`
+          : `${created.name} is ready with ${installedCount} performance mods.`,
+        tone: warnings.length > 0 ? "warning" : "success",
+        preference: "content-installed",
+        dedupeKey: `instance:created:${created.id}`,
+      });
     },
   });
 
-  const selectMajor = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    const major = event.currentTarget.dataset.major;
-    const group = MINECRAFT_VERSION_GROUPS.find((candidate) => candidate.major === major);
-    if (!group) return;
-    setSelectedMajor(group.major);
-    setSelectedVersion(group.versions[0]);
-    setInstanceName(`Void ${group.major} ${group.title}`.slice(0, 48));
-    createMutation.reset();
-  }, [createMutation]);
-
-  const selectLoader = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    setSelectedLoader(event.currentTarget.value as InstanceLoader);
-    createMutation.reset();
-  }, [createMutation]);
-
-  const selectExistingInstance = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    setSelectedInstanceId(event.currentTarget.value);
-  }, []);
-
-  const togglePerformanceMod = useCallback((projectId: string) => {
-    setEnabledPerformanceMods((current) => current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId]);
-    createMutation.reset();
-  }, [createMutation]);
-
-  const submitCreate = useCallback((event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (instanceName.trim().length >= 3 && !createMutation.isPending) createMutation.mutate();
-  }, [createMutation, instanceName]);
-
-  const startLaunch = useCallback(() => launchMutation.mutate(), [launchMutation]);
-  const openSettings = useCallback(() => setActiveView("settings"), [setActiveView]);
+  const selectMajor = useCallback((major: string) => { const group = versionGroups.find((candidate) => candidate.major === major); if (!group) return; setSelectedMajor(group.major); setSelectedVersion(group.versions[0]); setInstanceName(`Void ${group.title}`.slice(0, 48)); createMutation.reset(); }, [createMutation, versionGroups]);
+  const submitCreate = useCallback((event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (instanceName.trim().length >= 3 && !createMutation.isPending) createMutation.mutate(); }, [createMutation, instanceName]);
   const launchDisabled = launchMutation.isPending || isLoadingInstances || !instance || !profile;
 
-  return (
-    <div className={voidClientStyles.page}>
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className={voidClientStyles.sectionKicker}>Minecraft versions · 1.21 to 1.1</p>
-          <h1 className={voidClientStyles.pageTitle}>Instance Library</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#a79bad]">Choose a major Minecraft update, its exact patch, and a mod loader. Compatibility is checked during installation.</p>
-        </div>
-        <div className="flex items-center gap-2 border border-[#4cff9a]/18 bg-[#00e676]/[0.045] px-4 py-2 text-[9px] font-black tracking-[0.14em] text-[#4cff9a] uppercase [clip-path:polygon(5%_0,100%_0,95%_100%,0_100%)]"><span className="size-1.5 rounded-full bg-[#4cff9a] shadow-[0_0_10px_currentColor]" /> Ready</div>
-      </header>
-
-      {instances.length > 0 && (
-        <section className={`${voidClientStyles.glassCard} mb-5 p-4`} aria-labelledby="existing-instances-title">
-          <div className="flex items-center justify-between gap-3"><div><p className={voidClientStyles.sectionKicker}>Installed instances</p><h2 id="existing-instances-title" className="mt-1 text-sm font-black text-white">Select an instance to launch</h2></div><span className="text-[10px] tabular-nums text-[#a79bad]">{instances.length} local</span></div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {instances.map((candidate) => (
-              <button key={candidate.id} type="button" value={candidate.id} onClick={selectExistingInstance} aria-pressed={instance?.id === candidate.id} className={`min-h-14 min-w-52 cursor-pointer border px-3.5 py-2 text-left transition ${voidClientStyles.focusRing} ${instance?.id === candidate.id ? "border-[#c084fc]/55 bg-[#7B2CBF]/16 shadow-[0_0_24px_rgba(123,44,191,0.16)]" : "border-white/[0.08] bg-black/25 hover:border-[#9d5ce0]/35"} [clip-path:polygon(0_0,95%_0,100%_24%,100%_100%,5%_100%,0_76%)]`}>
-                <strong className="block truncate text-xs text-white">{candidate.name}</strong>
-                <small className="mt-1 block text-[9px] font-bold tracking-[0.08em] text-[#a79bad] uppercase">{candidate.gameVersion} · {loaderLabel(candidate.loader)}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="grid min-h-[720px] gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(380px,0.65fr)]">
-        <section className={`${voidClientStyles.glassCard} flex min-h-0 flex-col p-4 sm:p-5`} aria-labelledby="major-updates-title">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div><p className={voidClientStyles.sectionKicker}>Minecraft releases</p><h2 id="major-updates-title" className="font-display mt-1 text-lg font-black">Major Updates</h2></div>
-            <label className="w-full sm:w-64"><span className="sr-only">Search Minecraft updates</span><span className="relative block"><ShadowGlyph name="vault" size={15} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-[#8d65ae]" /><input type="search" value={versionQuery} onChange={(event) => setVersionQuery(event.target.value.slice(0, 50))} placeholder="Search era or version…" className={`${voidClientStyles.input} pl-10`} /></span></label>
-          </div>
-
-          <div className="mt-5 flex-1 overflow-y-auto pr-1">
-            <motion.div layout className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-              <AnimatePresence initial={false} mode="popLayout">
-                {visibleGroups.map((group, index) => <MajorUpdateCard key={group.major} group={group} selected={group.major === selectedGroup.major} index={index} onSelect={selectMajor} />)}
-              </AnimatePresence>
-            </motion.div>
-            {visibleGroups.length === 0 && <div className="grid min-h-64 place-items-center text-center"><div><ShadowGlyph name="vault" size={34} className="mx-auto text-[#765884]" /><p className="mt-3 text-sm font-bold text-white">No Minecraft era found</p><p className="mt-1 text-xs text-[#a79bad]">Clear the search to restore every major update.</p></div></div>}
-          </div>
-        </section>
-
-        <aside className={`${voidClientStyles.glassCard} flex min-h-0 flex-col`} aria-label="Version and loader configuration">
-          <div className="relative h-56 shrink-0 overflow-hidden">
-            <span aria-hidden="true" className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${selectedGroup.palette[2]} 0%, ${selectedGroup.palette[1]} 52%, ${selectedGroup.palette[0]} 150%)` }} />
-            <img src={selectedGroup.imageUrl} alt={`${selectedGroup.major} ${selectedGroup.title} pixel update artwork`} width={640} height={360} decoding="async" onError={(event) => { event.currentTarget.style.display = "none"; }} className="relative h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_20%,rgba(5,5,5,0.98))]" />
-            <div className="absolute inset-x-6 bottom-5"><span className="border border-[#c084fc]/30 bg-[#7B2CBF]/18 px-2.5 py-1 text-[8px] font-black tracking-[0.14em] text-[#e2c9ff] uppercase backdrop-blur-xl">Major {selectedGroup.major}</span><h2 className="font-display mt-3 text-2xl font-black">{selectedGroup.title}</h2><p className="mt-1 text-[10px] text-[#c3b8cc]">{selectedGroup.era}</p></div>
-          </div>
-
-          <form onSubmit={submitCreate} className="flex flex-1 flex-col p-5 sm:p-6">
-            <label htmlFor="exact-minecraft-version" className="text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">Exact sub-version</label>
-            <select id="exact-minecraft-version" value={selectedVersion} onChange={(event) => { setSelectedVersion(event.target.value); createMutation.reset(); }} className={`${voidClientStyles.input} mt-2 cursor-pointer appearance-none`}>
-              {selectedGroup.versions.map((version) => <option key={version} value={version}>Minecraft {version}</option>)}
-            </select>
-            <p className="mt-2 text-[10px] leading-4 text-[#a79bad]">Every known patch in the selected major era is listed newest first.</p>
-
-            <fieldset className="mt-5">
-              <legend className="text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">Mod loader</legend>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {INSTANCE_LOADERS.map((loader) => (
-                  <button key={loader} type="button" value={loader} onClick={selectLoader} aria-pressed={selectedLoader === loader} className={`min-h-11 cursor-pointer border px-3 text-[10px] font-black tracking-[0.08em] uppercase transition ${voidClientStyles.focusRing} ${selectedLoader === loader ? "border-[#c084fc]/55 bg-[#7B2CBF]/22 text-white shadow-[0_0_20px_rgba(123,44,191,0.2)]" : "border-white/[0.08] bg-black/25 text-[#a79bad] hover:border-[#9d5ce0]/35 hover:text-white"} [clip-path:polygon(8%_0,100%_0,92%_100%,0_100%)]`}>{loaderLabel(loader)}</button>
-                ))}
-              </div>
-              <p className="mt-2 text-[10px] leading-4 text-[#a79bad]">No UI restriction is applied. If a loader never published support for the chosen patch, the native resolver returns a precise compatibility error.</p>
-            </fieldset>
-
-            <fieldset className="mt-5">
-              <legend className="text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">Performance essentials</legend>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {PERFORMANCE_MODS.map((item) => {
-                  const enabled = enabledPerformanceMods.includes(item.id);
-                  return <button key={item.id} type="button" onClick={() => togglePerformanceMod(item.id)} aria-pressed={enabled} className={`flex min-h-11 cursor-pointer items-center gap-2 border px-3 text-left text-[10px] font-bold transition ${enabled ? "border-[#a855f7]/38 bg-[#7B2CBF]/14 text-white" : "border-white/[0.075] bg-black/20 text-[#8f8199] hover:border-white/[0.14] hover:text-white"} ${voidClientStyles.focusRing}`}><span className={`grid size-5 shrink-0 place-items-center border ${enabled ? "border-[#d8b4fe]/50 bg-[#7B2CBF]/35 text-[#e7d5ff]" : "border-[#5f5368]"}`}>{enabled && <ShadowGlyph name="check" size={12} />}</span><span className="truncate">{item.name}</span></button>;
-                })}
-              </div>
-              <p className="mt-2 text-[10px] leading-4 text-[#91849a]">Enabled items are downloaded from Modrinth into the new instance. Incompatible versions are skipped with a visible warning.</p>
-            </fieldset>
-
-            <label htmlFor="instance-name" className="mt-5 text-[9px] font-black tracking-[0.14em] text-[#c796ff] uppercase">Instance name</label>
-            <input id="instance-name" value={instanceName} onChange={(event) => { setInstanceName(event.target.value.slice(0, 48)); createMutation.reset(); }} minLength={3} maxLength={48} required className={`${voidClientStyles.input} mt-2`} />
-
-            <button type="submit" disabled={instanceName.trim().length < 3 || createMutation.isPending} className={`${voidClientStyles.secondaryButton} mt-4 min-h-12 w-full`}><ShadowGlyph name={createMutation.isPending ? "spark" : "vault"} size={16} />{createMutation.isPending ? "CREATING INSTANCE…" : `CREATE ${selectedVersion} ${loaderLabel(selectedLoader).toUpperCase()} INSTANCE`}</button>
-            {createMutation.isError && <p role="alert" className="mt-2 rounded-xl border border-red-400/18 bg-red-400/[0.055] px-3 py-2 text-[10px] leading-4 text-red-300">{String(createMutation.error)}</p>}
-            {createMutation.isSuccess && <div role="status" className="mt-2 rounded-xl border border-[#4cff9a]/18 bg-[#00e676]/[0.045] px-3 py-2 text-[10px] leading-4 text-[#4cff9a]"><p>Native instance created with {createMutation.data.installedCount} performance mods.</p>{createMutation.data.warnings.length > 0 && <ul className="mt-2 space-y-1 text-amber-200">{createMutation.data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}</div>}
-
-            <div className="mt-auto pt-6">
-              <button type="button" onClick={() => setAutoTuneOpen(true)} disabled={!instance} className={`${voidClientStyles.secondaryButton} mb-2 min-h-11 w-full`}><ShadowGlyph name="telemetry" size={16} />Auto-Tune Selected Modpack</button>
-              <div className="mb-3 flex items-center justify-between gap-3 border border-white/[0.07] bg-black/25 px-3.5 py-3"><span className="min-w-0"><small className="block text-[8px] font-black tracking-[0.12em] text-[#a79bad] uppercase">Launch target</small><strong className="mt-1 block truncate text-xs text-white">{instance ? `${instance.name} · ${instance.gameVersion} · ${loaderLabel(instance.loader)}` : "No native instance selected"}</strong></span><button type="button" onClick={openSettings} aria-label="Open launch settings" className={`grid size-11 shrink-0 cursor-pointer place-items-center border border-white/[0.09] bg-black/30 text-[#b99cc9] transition hover:border-[#9d5ce0]/50 hover:text-white ${voidClientStyles.focusRing}`}><ShadowGlyph name="settings" size={18} /></button></div>
-              <motion.button type="button" onClick={startLaunch} disabled={launchDisabled} whileHover={!reducedMotion && !launchDisabled ? { y: -2, scale: 1.015 } : undefined} whileTap={!reducedMotion && !launchDisabled ? { scale: 0.985 } : undefined} className={`${voidClientStyles.primaryButton} min-h-16 w-full text-sm`}><ShadowGlyph name={launchMutation.isPending ? "spark" : "play"} size={21} className={launchMutation.isPending ? "animate-pulse" : ""} />{launchMutation.isPending ? "STARTING MINECRAFT…" : "LAUNCH VOID"}</motion.button>
-              {!profile && <p role="status" className="mt-2 text-center text-[10px] text-amber-200">Microsoft verification is required before launch.</p>}
-              {launchMutation.isError && <p role="alert" className="mt-2 text-center text-[10px] text-red-300">{String(launchMutation.error)}</p>}
-              {launchMutation.isSuccess && <p role="status" className="mt-2 text-center text-[10px] text-[#4cff9a]">Minecraft is starting. Live logs are open.</p>}
-            </div>
-          </form>
-        </aside>
-      </div>
-      <AnimatePresence>{autoTuneOpen && instance && <AutoTuneModal instance={instance} onClose={() => setAutoTuneOpen(false)} />}</AnimatePresence>
+  return <div className={voidClientStyles.page}>
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className={voidClientStyles.sectionKicker}>Game profiles</p><h1 className={`${voidClientStyles.pageTitle} mt-1`}>Instances</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[#92929B]">Choose an official Minecraft Java release, exact patch and loader. The packaged launcher refreshes this list directly from Mojang.</p></div><div className="flex items-center gap-2"><span className={voidClientStyles.tag}>{versionCatalogQuery.data ? `Mojang · ${versionCatalogQuery.data.releases.length} releases` : nativeRuntime ? "Loading Mojang catalog" : "Bundled release catalog"}</span>{nativeRuntime && <button type="button" onClick={() => void versionCatalogQuery.refetch()} disabled={versionCatalogQuery.isFetching} className={voidClientStyles.iconButton} aria-label="Refresh Minecraft releases" title="Refresh Minecraft releases"><ShadowGlyph name="sync" size={15} /></button>}</div></header>
+    {instances.length > 0 && <section className={`${voidClientStyles.flatPanel} mb-4 p-4`} aria-labelledby="existing-instances-title"><div className="flex items-center justify-between gap-3"><h2 id="existing-instances-title" className="text-sm font-semibold text-[#F4F4F5]">Your instances</h2><span className={voidClientStyles.tag}>{instances.length} local</span></div><div className="mt-3 grid max-h-32 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">{instances.map((candidate) => <button key={candidate.id} type="button" onClick={() => setActiveInstanceId(candidate.id)} aria-pressed={instance?.id === candidate.id} className={`min-h-16 cursor-pointer rounded-lg border p-3 text-left transition-[border-color,background-color] duration-150 ${voidClientStyles.focusRing} ${instance?.id === candidate.id ? "border-[#7E22CE] bg-[#21152B] text-white" : "border-[#29292F] bg-[#111114] text-[#D4D4D8] hover:border-[#46464F] hover:bg-[#1B1B20]"}`}><strong className="block truncate text-sm">{candidate.name}</strong><span className="mt-1 block truncate font-mono text-[11px] opacity-75">{candidate.gameVersion} · {loaderLabel(candidate.loader)}</span></button>)}</div></section>}
+    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+      <section className={`${voidClientStyles.flatPanel} flex min-h-0 flex-col p-4`} aria-labelledby="major-updates-title"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className={voidClientStyles.sectionKicker}>Minecraft Java</p><h2 id="major-updates-title" className="mt-1 text-base font-semibold text-[#F4F4F5]">Release library</h2></div><label className="w-full sm:w-56"><span className="sr-only">Search Minecraft releases</span><input value={versionQuery} onChange={(event) => setVersionQuery(event.target.value.slice(0, 50))} placeholder="Version or update name" className={voidClientStyles.input} /></label></div>{versionCatalogQuery.isError && <p role="status" className="mt-3 rounded-lg border border-[#59411F] bg-[#2A2112] px-3 py-2 text-xs text-[#FCD34D]">Mojang could not be reached. The complete bundled release list is still available.</p>}<div className="mt-4 grid max-h-[calc(100vh-270px)] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">{visibleGroups.map((group) => <button key={group.major} type="button" onClick={() => selectMajor(group.major)} aria-pressed={group.major === selectedGroup.major} className={`group relative min-h-40 cursor-pointer overflow-hidden rounded-xl border text-left transition-[border-color,transform] duration-200 ${voidClientStyles.focusRing} ${group.major === selectedGroup.major ? "border-[#8B5CF6] text-white" : "border-[#29292F] text-[#D4D4D8] hover:-translate-y-0.5 hover:border-[#52525B]"}`}><img src={group.imageUrl} alt="" loading="lazy" className={`absolute inset-0 size-full object-cover transition-[opacity,transform] duration-500 group-hover:scale-[1.025] ${group.major === selectedGroup.major ? "opacity-80" : "opacity-60"}`} /><span className="absolute inset-0 bg-gradient-to-t from-[#0B0B0E] via-[#0B0B0E]/35 to-black/10" aria-hidden="true" /><span className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3"><span className="rounded-md border border-white/15 bg-black/60 px-2 py-1 font-mono text-[10px] font-semibold text-white">JAVA {group.major}</span>{group.isLatest ? <span className="rounded-md border border-[#A855F7] bg-[#7E22CE] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">Latest</span> : group.releaseDate ? <time className="rounded-md bg-black/55 px-2 py-1 font-mono text-[10px] text-[#D4D4D8]">{formatReleaseDate(group.releaseDate)}</time> : null}</span><span className="absolute inset-x-0 bottom-0 block p-4"><strong className="block text-base font-semibold text-white">{group.title}</strong><span className="mt-1 line-clamp-1 block text-xs text-[#D4D4D8]">{group.era}</span><span className="mt-2 block font-mono text-[10px] text-[#A1A1AA]">{group.versions.length} stable {group.versions.length === 1 ? "release" : "releases"} · newest {group.versions[0]}</span></span></button>)}</div>{visibleGroups.length === 0 && <p className="p-6 text-center text-sm text-[#92929B]">No stable Minecraft release matches that search.</p>}</section>
+      <aside className={`${voidClientStyles.flatPanel} p-5`} aria-label="Version and loader configuration"><div className="border-b border-[#333333] pb-4"><p className={voidClientStyles.sectionKicker}>Selected update</p><h2 className="mt-1 text-lg font-semibold text-[#F5F5F5]">{selectedGroup.major} {selectedGroup.title}</h2><p className="mt-1 text-xs text-[#A3A3A3]">{selectedGroup.era}</p></div><form onSubmit={submitCreate} className="mt-4"><label htmlFor="deployment-version" className="block text-xs font-semibold text-[#D4D4D4]">Exact version</label><select id="deployment-version" value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)} className={`${voidClientStyles.input} mt-1 cursor-pointer`}>{selectedGroup.versions.map((version) => <option key={version} value={version}>{version}</option>)}</select><fieldset className="mt-4"><legend className="text-xs font-semibold text-[#D4D4D4]">Loader</legend><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">{INSTANCE_LOADERS.map((loader) => <button key={loader} type="button" value={loader} onClick={() => setSelectedLoader(loader)} aria-pressed={selectedLoader === loader} className={`min-h-11 cursor-pointer rounded-sm border px-2 text-xs font-semibold transition-colors duration-150 ${voidClientStyles.focusRing} ${selectedLoader === loader ? "border-[#333333] bg-[#7B2CBF] text-white" : "border-[#333333] bg-[#111111] text-[#A3A3A3] hover:bg-[#242424]"}`}>{loaderLabel(loader)}</button>)}</div><p className="mt-2 text-xs leading-5 text-[#A3A3A3]">All loaders remain selectable. Native launch validation reports incompatible versions.</p></fieldset><fieldset className="mt-4"><legend className="text-xs font-semibold text-[#D4D4D4]">Performance essentials</legend><div className="mt-2 space-y-2">{PERFORMANCE_MODS.map((item) => { const enabled = enabledMods.includes(item.id); return <button key={item.id} type="button" onClick={() => setEnabledMods((current) => enabled ? current.filter((id) => id !== item.id) : [...current, item.id])} aria-pressed={enabled} className={`flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-sm border px-3 text-left text-xs font-medium transition-colors duration-150 ${enabled ? "border-[#333333] bg-[#7B2CBF] text-white" : "border-[#333333] bg-[#111111] text-[#A3A3A3] hover:bg-[#242424]"}`}><span className="grid size-5 place-items-center rounded-sm border border-[#333333]">{enabled && <ShadowGlyph name="check" size={12} />}</span>{item.name}</button>; })}</div></fieldset><label htmlFor="deployment-name" className="mt-4 block text-xs font-semibold text-[#D4D4D4]">Instance name</label><input id="deployment-name" value={instanceName} onChange={(event) => setInstanceName(event.target.value.slice(0, 48))} minLength={3} maxLength={48} required className={`${voidClientStyles.input} mt-1`} /><button type="submit" disabled={instanceName.trim().length < 3 || createMutation.isPending} className={`${voidClientStyles.secondaryButton} mt-3 w-full`}><ShadowGlyph name="vault" size={15} />{createMutation.isPending ? "Creating…" : "Create instance"}</button>{createMutation.error && <p role="alert" className="mt-2 border border-[#333333] bg-[#2A1515] px-3 py-2 text-xs text-[#FCA5A5]">{String(createMutation.error)}</p>}{createMutation.data && <div role="status" className="mt-2 border border-[#333333] bg-[#14251B] px-3 py-2 text-xs leading-5 text-[#86EFAC]">Created with {createMutation.data.installedCount} performance mods.{createMutation.data.warnings.length > 0 && <ul className="mt-1 list-disc pl-4 text-[#FCD34D]">{createMutation.data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}</div>}</form><div className="mt-5 border-t border-[#333333] pt-4"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="text-xs text-[#737373]">Launch target</p><p className="mt-1 truncate text-sm font-medium text-[#D4D4D4]">{instance ? `${instance.name} · ${instance.gameVersion} · ${loaderLabel(instance.loader)}` : "No instance selected"}</p></div><button type="button" onClick={() => setActiveView("settings")} aria-label="Open launch settings" className={voidClientStyles.iconButton}><ShadowGlyph name="settings" size={16} /></button></div><button type="button" onClick={() => launchMutation.mutate()} disabled={launchDisabled} className={`${voidClientStyles.primaryButton} mt-3 w-full`}><ShadowGlyph name={launchMutation.isPending ? "spark" : "play"} size={17} />{launchMutation.isPending ? "Starting Minecraft…" : "Launch Void"}</button>{!profile && <p className="mt-2 text-center text-xs text-[#FCD34D]">Microsoft verification is required before launch.</p>}{launchMutation.error && <p role="alert" className="mt-2 text-center text-xs text-[#FCA5A5]">{String(launchMutation.error)}</p>}{launchMutation.isSuccess && <p role="status" className="mt-2 text-center text-xs text-[#86EFAC]">Minecraft launch accepted. Mission Control has the native log.</p>}</div></aside>
     </div>
-  );
+  </div>;
 }
 
-function MajorUpdateCard({ group, selected, index, onSelect }: { group: IMinecraftVersionGroup; selected: boolean; index: number; onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void }) {
-  const reducedMotion = useReducedMotion();
-  return (
-    <motion.button layout type="button" data-major={group.major} aria-pressed={selected} onClick={onSelect} initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: reducedMotion ? 0.01 : 0.24, delay: reducedMotion ? 0 : Math.min(index, 9) * 0.025 }} className={`group relative min-h-44 cursor-pointer overflow-hidden border text-left transition-colors ${voidClientStyles.focusRing} ${selected ? "border-[#c084fc]/62 shadow-[0_0_30px_rgba(123,44,191,0.26)]" : "border-white/[0.08] hover:border-[#9d5ce0]/42"} [clip-path:polygon(0_0,91%_0,100%_14%,100%_100%,8%_100%,0_86%)]`}>
-      <span
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={{ background: `linear-gradient(135deg, ${group.palette[2]} 0%, ${group.palette[1]} 52%, ${group.palette[0]} 150%)` }}
-      />
-      <img
-        src={group.imageUrl}
-        alt=""
-        width={640}
-        height={360}
-        decoding="async"
-        onError={(event) => { event.currentTarget.style.display = "none"; }}
-        className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]"
-      />
-      <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,5,5,0.04),rgba(5,5,5,0.97)_82%)]" />
-      <span className="absolute inset-x-4 bottom-4"><span className="flex items-center justify-between"><span className="text-[8px] font-black tracking-[0.14em] text-[#d8b4fe] uppercase">{group.versions.length} releases</span>{selected && <ShadowGlyph name="check" size={15} className="text-[#d8b4fe]" />}</span><strong className="font-display mt-2 block text-base font-black text-white">{group.major} {group.title}</strong><small className="mt-1 block truncate text-[9px] text-[#b3a7bb]">{group.era}</small></span>
-    </motion.button>
-  );
+function formatReleaseDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(date);
 }
 
-function loaderLabel(loader: InstanceLoader) {
-  if (loader === "neoforge") return "NeoForge";
-  return loader.charAt(0).toUpperCase() + loader.slice(1);
-}
+function loaderLabel(loader: InstanceLoader) { return loader === "neoforge" ? "NeoForge" : loader.charAt(0).toUpperCase() + loader.slice(1); }
 
 export default DeploymentVaultView;

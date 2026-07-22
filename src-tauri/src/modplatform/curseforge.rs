@@ -291,3 +291,44 @@ pub async fn files(
         })
         .collect())
 }
+
+/// Resolve one CurseForge file by its numeric project and file ids. Modpack
+/// manifests contain these two ids instead of a direct download URL.
+pub async fn file_download_info(
+    http: &reqwest::Client,
+    api_key: &str,
+    project_id: &str,
+    file_id: &str,
+) -> Result<ModVersionInfo, LauncherError> {
+    let response = http
+        .get(format!("{BASE}/mods/{project_id}/files/{file_id}"))
+        .header("x-api-key", api_key)
+        .send()
+        .await?;
+    if matches!(
+        response.status(),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        return Err(LauncherError::Config(
+            "CurseForge rejected the saved API key. Replace it with a current Core API key from the developer console.".into(),
+        ));
+    }
+    let response: ApiResponse<File> = response.error_for_status()?.json().await?;
+    let file = response.data;
+    let sha1 = file
+        .hashes
+        .iter()
+        .find(|hash| hash.algo == 1)
+        .map(|hash| hash.value.clone());
+    Ok(ModVersionInfo {
+        id: file.id.to_string(),
+        name: file.display_name.clone(),
+        version_number: file.display_name,
+        file_name: file.file_name,
+        download_url: file.download_url,
+        sha1,
+        file_size: file.file_length,
+        game_versions: file.game_versions,
+        loaders: Vec::new(),
+    })
+}

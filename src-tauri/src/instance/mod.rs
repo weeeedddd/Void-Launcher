@@ -122,7 +122,7 @@ impl Instance {
                 Err(err) => eprintln!("skipping broken instance {:?}: {err}", entry.path()),
             }
         }
-        instances.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        instances.sort_by_key(|instance| std::cmp::Reverse(instance.created_at));
         instances
     }
 

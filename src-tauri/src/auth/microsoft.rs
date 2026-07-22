@@ -43,7 +43,7 @@ const MC_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profil
 
 /// Microsoft's device-code response. Deserialized from snake_case (their
 /// wire format), serialized to camelCase for our frontend.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct DeviceCodeResponse {
     /// Short code the user types at the verification URI.
@@ -138,7 +138,7 @@ fn clean_oauth_description(description: &str) -> &str {
 // Step 1b: poll until the user finished signing in
 // ─────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct MsaTokens {
     pub access_token: String,
     /// Present because we request the `offline_access` scope.
@@ -220,11 +220,20 @@ pub async fn poll_for_msa_tokens(
 
 /// Exchanges a Windows-encrypted refresh token for a new MSA token pair.
 /// The refresh token never crosses the Tauri IPC boundary.
+pub enum RefreshFailure {
+    /// Microsoft explicitly rejected the credential. Only this case may clear
+    /// the affected account's saved refresh token.
+    ReauthRequired(String),
+    /// Network, throttling and upstream failures preserve the credential so a
+    /// later retry can succeed.
+    Retryable(LauncherError),
+}
+
 pub async fn refresh_msa_tokens(
     http: &reqwest::Client,
     refresh_token: &str,
-) -> Result<MsaTokens, LauncherError> {
-    let client_id = validate_client_id(CLIENT_ID)?;
+) -> Result<MsaTokens, RefreshFailure> {
+    let client_id = validate_client_id(CLIENT_ID).map_err(RefreshFailure::Retryable)?;
     let response = http
         .post(TOKEN_URL)
         .form(&[
@@ -234,14 +243,19 @@ pub async fn refresh_msa_tokens(
             ("scope", SCOPE),
         ])
         .send()
-        .await?;
+        .await
+        .map_err(|error| RefreshFailure::Retryable(error.into()))?;
 
     if response.status().is_success() {
-        return Ok(response.json().await?);
+        return response
+            .json()
+            .await
+            .map_err(|error| RefreshFailure::Retryable(error.into()));
     }
 
     let status = response.status();
     let error = response.json::<MsaTokenError>().await.ok();
+    let code = error.as_ref().map(|value| value.error.as_str());
     let detail = error
         .as_ref()
         .and_then(|value| value.error_description.as_deref())
@@ -249,9 +263,17 @@ pub async fn refresh_msa_tokens(
         .filter(|value| !value.is_empty())
         .or_else(|| error.as_ref().map(|value| value.error.as_str()))
         .unwrap_or("the saved session is no longer valid");
-    Err(LauncherError::Auth(format!(
-        "Microsoft session refresh failed ({status}): {detail}"
-    )))
+    let message = format!("Microsoft session refresh failed ({status}): {detail}");
+    if status == reqwest::StatusCode::UNAUTHORIZED
+        || matches!(
+            code,
+            Some("invalid_grant" | "interaction_required" | "expired_token")
+        )
+    {
+        Err(RefreshFailure::ReauthRequired(message))
+    } else {
+        Err(RefreshFailure::Retryable(LauncherError::Auth(message)))
+    }
 }
 
 #[cfg(test)]
@@ -464,6 +486,7 @@ pub async fn login_with_msa(
         xuid,
         access_token: mc.access_token,
         expires_at: chrono::Utc::now() + chrono::Duration::seconds(mc.expires_in),
+        authenticated_at: chrono::Utc::now().timestamp(),
         msa_refresh_token: msa.refresh_token,
     })
 }

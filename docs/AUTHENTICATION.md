@@ -64,7 +64,11 @@ Accounts that don't own Java Edition get **404** on `/minecraft/profile`. Note t
 - **Device-code flow** over auth-code+PKCE: no localhost redirect server, no embedded webview (Microsoft discourages those for credentials), and the UI just shows a short code. Prism Launcher does the same.
 - **Split into two commands** (`begin_…`/`complete_…`) so the UI can display the code while Rust polls.
 - **Tokens never reach the WebView.** The frontend only sees `{ uuid, name }`; the MC token lives in `AppState.session` and is injected into the Java command line at launch.
-- **Refresh (M1):** persist `refresh_token` in the OS keychain (`keyring` crate — Windows Credential Manager / macOS Keychain / libsecret), then `grant_type=refresh_token` at startup and re-run steps 2–5. Never store tokens in plain files.
+- **Encrypted multi-account vault:** every saved profile and refresh token lives in one versioned vault protected by Windows DPAPI for the current OS user. React receives only account id, UUID, name, active state, and whether re-authentication is required.
+- **Atomic rotation:** Microsoft may rotate a refresh token. The rotated value is encrypted and atomically committed before the independent Xbox/Minecraft exchanges continue, so an upstream outage cannot strand the account with an already-consumed credential.
+- **Failure policy:** only explicit OAuth responses such as `invalid_grant` or `interaction_required` clear the affected credential. Network, rate-limit, and upstream failures preserve it for retry.
+- **Persistence interval:** the original interactive authorization timestamp survives refreshes and account switches. `1 Week`, `2 Weeks`, and `1 Month` therefore cannot be extended indefinitely by silent refresh; `Always Ask` keeps profile metadata but no reusable credential.
+- **Launch-time freshness:** startup restore and game launch share the same native refresh path. An expired Minecraft access token is refreshed before `javaw.exe` starts, even if React still has public profile metadata in memory.
 
 ## Libraries, if you'd rather not hand-roll
 

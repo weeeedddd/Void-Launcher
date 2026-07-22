@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Void Bootstrapper",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "identifier": "dev.void.bootstrapper",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -21,7 +21,7 @@
         "center": true,
         "decorations": false,
         "resizable": true,
-        "shadow": true
+        "shadow": false
       }
     ],
     "security": {

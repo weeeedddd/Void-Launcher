@@ -92,6 +92,9 @@ pub fn run() {
             auth::commands::begin_microsoft_login,
             auth::commands::complete_microsoft_login,
             auth::commands::restore_microsoft_session,
+            auth::commands::list_microsoft_accounts,
+            auth::commands::activate_microsoft_account,
+            auth::commands::remove_microsoft_account,
             // Spotify + Google/YouTube OAuth and playback
             music::connect_music_provider,
             music::get_music_connection,
@@ -102,19 +105,27 @@ pub fn run() {
             modplatform::commands::get_mod_versions,
             // instances
             instance::commands::list_instances,
+            instance::commands::list_instance_content,
             instance::commands::create_instance,
             instance::commands::update_instance_settings,
             instance::commands::install_mod,
             instance::commands::install_shader,
+            instance::commands::install_modpack,
+            instance::commands::provision_modpack,
             instance::commands::set_mod_enabled,
             // launching
             launch::commands::launch_instance,
             // system: optimizer & java management
             system::commands::get_hardware_report,
+            system::commands::get_live_system_metrics,
+            system::commands::get_network_latency,
+            system::commands::get_minecraft_version_catalog,
             system::commands::get_java_status,
             system::commands::ensure_java_for_instance,
             system::commands::optimize_instance,
             system::commands::apply_game_video_settings,
+            system::process::get_minecraft_process,
+            system::process::set_minecraft_process_priority,
             // local settings
             state::get_settings_status,
             state::set_curseforge_api_key,

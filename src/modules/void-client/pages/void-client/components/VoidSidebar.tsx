@@ -1,58 +1,71 @@
 import { memo, useCallback } from "react";
-import { motion } from "motion/react";
-import { NAVIGATION_ITEMS } from "../../../constants";
+import { Activity, Boxes, House, Newspaper, PackageSearch, Settings } from "lucide-react";
+import { translatedViewLabel } from "../../../i18n";
 import { useVoidClientStore } from "../../../stores/voidClient.store";
 import type { VoidView } from "../../../types";
-import { ShadowGlyph } from "../../../components/ShadowGlyph";
+import { LanguageControl } from "./LanguageControl";
 import { voidClientStyles } from "../void-client.styles";
 
 export const VoidSidebar = memo(function VoidSidebar() {
   const activeView = useVoidClientStore((state) => state.activeView);
+  const language = useVoidClientStore((state) => state.language);
   const setActiveView = useVoidClientStore((state) => state.setActiveView);
 
   const navigate = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     setActiveView(event.currentTarget.value as VoidView);
   }, [setActiveView]);
 
+  const navigation: VoidView[] = ["dashboard", "deployments", "mods", "telemetry", "chronicle"];
+
+  const iconFor = (view: VoidView) => {
+    if (view === "dashboard") return <House size={18} strokeWidth={1.7} />;
+    if (view === "deployments") return <Boxes size={18} strokeWidth={1.7} />;
+    if (view === "mods") return <PackageSearch size={18} strokeWidth={1.7} />;
+    if (view === "telemetry") return <Activity size={18} strokeWidth={1.7} />;
+    if (view === "chronicle") return <Newspaper size={18} strokeWidth={1.7} />;
+    return <Settings size={18} strokeWidth={1.7} />;
+  };
+
   return (
-    <aside className={voidClientStyles.sidebar} aria-label="Void Client navigation">
-      <div className="mb-6 px-3">
-        <p className={voidClientStyles.sectionKicker}>Shadow Garden</p>
-        <p className="font-display mt-1 text-sm font-black tracking-[0.17em]">VOID LAUNCHER</p>
+    <aside className={voidClientStyles.sidebar} aria-label="Main navigation">
+      <div className="grid h-14 shrink-0 place-items-center border-b border-[#202025]" aria-label="Void Launcher">
+        <img src="/void-v-eclipse-icon.png" alt="" className="size-8 object-cover" />
       </div>
 
-      <nav className="space-y-1.5">
-        {NAVIGATION_ITEMS.map((item) => {
-          const active = item.id === activeView;
+      <nav className="flex flex-1 flex-col items-stretch pt-3" aria-label="Launcher sections">
+        {navigation.map((view) => {
+          const active = view === activeView;
+
           return (
-            <motion.button
-              key={item.id}
+            <button
+              key={view}
               type="button"
-              value={item.id}
+              value={view}
               onClick={navigate}
-              whileHover={{ x: 3 }}
-              whileTap={{ scale: 0.985 }}
-              className={`group relative flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border px-3 py-3 text-left transition ${voidClientStyles.focusRing} ${active ? "border-[#8f48cf]/40 bg-[linear-gradient(110deg,rgba(123,44,191,0.22),rgba(29,17,42,0.5))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_24px_rgba(123,44,191,0.12)]" : "border-transparent text-[#776c82] hover:border-white/[0.06] hover:bg-white/[0.03] hover:text-white"}`}
+              aria-label={translatedViewLabel(language, view)}
+              title={translatedViewLabel(language, view)}
+              aria-current={active ? "page" : undefined}
+              className={`relative grid h-12 w-full cursor-pointer place-items-center rounded-none border-0 border-l-2 transition-colors duration-150 ${voidClientStyles.focusRing} ${active ? "border-l-[#8B5CF6] bg-[#15111D] text-[#A78BFA]" : "border-l-transparent bg-black text-[#666666] hover:bg-[#111111] hover:text-white"}`}
             >
-              {active && <motion.span layoutId="void-nav-active" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-[#bd7aff] shadow-[0_0_14px_rgba(189,122,255,0.9)]" />}
-              <span className={`grid size-9 shrink-0 place-items-center rounded-xl border transition ${active ? "border-[#a855f7]/35 bg-[#7B2CBF]/15 text-[#d8b4fe]" : "border-white/[0.055] bg-black/20 text-[#655a70] group-hover:text-[#c796ff]"}`}>
-                <ShadowGlyph name={item.icon} size={18} className="filter drop-shadow-[0_0_6px_currentColor]" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[10px] font-semibold tracking-[0.08em] text-[#817488] uppercase">{item.eyebrow}</span>
-                <span className="mt-0.5 block truncate text-xs font-bold">{item.label}</span>
-              </span>
-            </motion.button>
+              {iconFor(view)}
+            </button>
           );
         })}
       </nav>
 
-      <div className="mt-auto rounded-2xl border border-[#7B2CBF]/20 bg-[radial-gradient(circle_at_80%_0%,rgba(123,44,191,0.2),transparent_48%),rgba(0,0,0,0.24)] p-3.5">
-        <div className="flex items-center gap-2 text-[#4cff9a]">
-          <ShadowGlyph name="shield" size={15} className="filter drop-shadow-[0_0_7px_currentColor]" />
-          <span className="text-[10px] font-semibold tracking-[0.1em] uppercase">Launcher protected</span>
-        </div>
-        <p className="mt-2 text-[10px] leading-4 text-[#776c82]">Tokens remain sealed inside the Rust runtime.</p>
+      <div className="mt-auto border-t border-[#222222]">
+        <LanguageControl compact />
+        <button
+          type="button"
+          value="settings"
+          onClick={navigate}
+          aria-label={translatedViewLabel(language, "settings")}
+          title={translatedViewLabel(language, "settings")}
+          aria-current={activeView === "settings" ? "page" : undefined}
+          className={`relative grid h-12 w-full cursor-pointer place-items-center rounded-none border-0 border-l-2 transition-colors duration-150 ${voidClientStyles.focusRing} ${activeView === "settings" ? "border-l-[#8B5CF6] bg-[#15111D] text-[#A78BFA]" : "border-l-transparent bg-black text-[#666666] hover:bg-[#111111] hover:text-white"}`}
+        >
+          <Settings size={18} strokeWidth={1.7} />
+        </button>
       </div>
     </aside>
   );
